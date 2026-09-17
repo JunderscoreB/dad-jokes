@@ -3,10 +3,7 @@
   {
     "type": "section",
     "items": [
-      {
-        "type": "heading",
-        "defaultValue": "Display Settings"
-      },
+      { "type": "heading", "defaultValue": "Display & Timeout" },
       {
         "type": "select",
         "messageKey": "FontSize",
@@ -18,16 +15,14 @@
           { "label": "Large", "value": "2" },
           { "label": "Extra Large", "value": "3" }
         ]
-      }
+      },
+      { "type": "slider", "messageKey": "TimeoutSec", "defaultValue": 30, "label": "App Timeout (0 = Never)", "min": 0, "max": 120, "step": 15 }
     ]
   },
   {
     "type": "section",
     "items": [
-      {
-        "type": "heading",
-        "defaultValue": "Schedule Settings"
-      },
+      { "type": "heading", "defaultValue": "Schedule Settings" },
       {
         "type": "select",
         "messageKey": "ScheduleMode",
@@ -45,21 +40,16 @@
   {
     "type": "section",
     "items": [
-      {
-        "type": "heading",
-        "defaultValue": "Random Window Range"
-      },
-      { "type": "slider", "messageKey": "WindowStartHour", "defaultValue": 9, "label": "Window Start Hour (0-23)", "min": 0, "max": 23 },
-      { "type": "slider", "messageKey": "WindowEndHour", "defaultValue": 17, "label": "Window End Hour (0-23)", "min": 0, "max": 23 }
+      { "type": "heading", "defaultValue": "Random Window Range" },
+      { "type": "slider", "messageKey": "WindowStartHour", "defaultValue": 9, "label": "Start Hour (0-23)", "min": 0, "max": 23 },
+      { "type": "slider", "messageKey": "WindowEndHour", "defaultValue": 17, "label": "End Hour (0-23)", "min": 0, "max": 23 },
+      { "type": "slider", "messageKey": "JokesPerWindow", "defaultValue": 3, "label": "Jokes per Window", "min": 1, "max": 20 }
     ]
   },
   {
     "type": "section",
     "items": [
-      {
-        "type": "heading",
-        "defaultValue": "Alert Settings"
-      },
+      { "type": "heading", "defaultValue": "Alert Settings" },
       {
         "type": "select",
         "messageKey": "AlertStyle",
@@ -71,15 +61,17 @@
           { "label": "Vibration & Sound", "value": "2" }
         ]
       },
+      { "type": "slider", "messageKey": "AlertVolume", "defaultValue": 100, "label": "Alert Volume (0-100)", "min": 0, "max": 100 },
       {
         "type": "select",
         "messageKey": "SoundTune",
         "defaultValue": "0",
-        "label": "Sound Tune (If enabled)",
+        "label": "Sound Tune",
         "options": [
           { "label": "Classic Beep", "value": "0" },
           { "label": "Ba-Dum-Tss!", "value": "1" },
-          { "label": "Fart", "value": "2" }
+          { "label": "Fart", "value": "2" },
+          { "label": "Circus March", "value": "3" }
         ]
       }
     ]

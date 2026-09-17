@@ -25,18 +25,26 @@
       "watchface": false
     },
     "messageKeys": [
-      "dummy",
       "ScheduleMode",
       "SpecificHour",
       "SpecificMinute",
       "WindowStartHour",
       "WindowEndHour",
+      "JokesPerWindow",
+      "TimeoutSec",
       "AlertStyle",
+      "AlertVolume",
       "SoundTune",
       "FontSize"
     ],
     "resources": {
-      "media": []
+      "media": [
+        {
+          "type": "raw",
+          "name": "JOKES_TXT",
+          "file": "jokes.txt"
+        }
+      ]
     }
   }
 }

@@ -36,6 +36,7 @@ typedef struct {
     int32_t timeout_sec;
     int32_t alert_volume;
     int32_t alert_style;  
+    int32_t sound_tune;   
     int32_t font_size;    
 } AppConfig;
 
@@ -49,6 +50,7 @@ static AppConfig s_config = {
     .timeout_sec = 30,
     .alert_volume = 100,
     .alert_style = 0,
+    .sound_tune = 0,
     .font_size = 2 
 };
 
@@ -85,6 +87,71 @@ static void write_tone_to_speaker(uint16_t freq_hz, uint16_t duration_ms) {
 
         for (uint32_t i = 0; i < chunk_samples; i++) {
             buffer[i] = (((samples_written + i) / half_period_samples) % 2 == 0) ? 8000 : -8000;
+        }
+
+        uint32_t bytes_to_write = chunk_samples * sizeof(int16_t);
+        uint32_t written_bytes = speaker_stream_write((const void*)buffer, bytes_to_write);
+
+        if (written_bytes > 0) {
+            samples_written += (written_bytes / sizeof(int16_t));
+        } else {
+            psleep(10);
+        }
+    }
+}
+
+static void write_mixed_cymbal_to_speaker(uint16_t freq_hz, uint16_t duration_ms) {
+    uint32_t total_samples = (16000 * duration_ms) / 1000;
+    uint32_t half_period_samples = 16000 / (freq_hz * 2);
+    if (half_period_samples == 0) half_period_samples = 1;
+
+    int16_t buffer[256]; 
+    uint32_t samples_written = 0;
+
+    while (samples_written < total_samples) {
+        uint32_t chunk_samples = total_samples - samples_written;
+        if (chunk_samples > ARRAY_LENGTH(buffer)) chunk_samples = ARRAY_LENGTH(buffer);
+
+        for (uint32_t i = 0; i < chunk_samples; i++) {
+            int16_t tone = (((samples_written + i) / half_period_samples) % 2 == 0) ? 5000 : -5000;
+            int16_t noise = (rand() % 10000) - 5000;
+            buffer[i] = tone + noise; 
+        }
+
+        uint32_t bytes_to_write = chunk_samples * sizeof(int16_t);
+        uint32_t written_bytes = speaker_stream_write((const void*)buffer, bytes_to_write);
+
+        if (written_bytes > 0) {
+            samples_written += (written_bytes / sizeof(int16_t));
+        } else {
+            psleep(10);
+        }
+    }
+}
+
+static void write_fart_to_speaker(uint16_t duration_ms) {
+    uint32_t total_samples = (16000 * duration_ms) / 1000;
+    int16_t buffer[256]; 
+    uint32_t samples_written = 0;
+
+    while (samples_written < total_samples) {
+        uint32_t chunk_samples = total_samples - samples_written;
+        if (chunk_samples > ARRAY_LENGTH(buffer)) chunk_samples = ARRAY_LENGTH(buffer);
+
+        for (uint32_t i = 0; i < chunk_samples; i++) {
+            uint32_t abs_sample = samples_written + i;
+            uint32_t freq = 45 - (abs_sample / 400);
+            if (freq < 10) freq = 10;
+            
+            uint32_t half_period = 16000 / (freq * 2);
+            if (half_period == 0) half_period = 1;
+            uint32_t jitter = rand() % (half_period / 3 + 1);
+            
+            if (((abs_sample + jitter) / half_period) % 2 == 0) {
+                buffer[i] = 14000 - (rand() % 6000);
+            } else {
+                buffer[i] = -14000 + (rand() % 6000);
+            }
         }
 
         uint32_t bytes_to_write = chunk_samples * sizeof(int16_t);
@@ -251,10 +318,39 @@ static void play_alert(void) {
                 // --- HARDWARE WARMUP ---
                 write_silence_to_speaker(250);
 
-                // Authentic Casio F-91W Alarm Beep (Rapid High-Pitch Pulses)
-                write_tone_to_speaker(4096, 60);
-                write_silence_to_speaker(65);
-                write_tone_to_speaker(4096, 60);
+                if (s_config.sound_tune == 3) {
+                    // "Entry of the Gladiators" (Circus Theme) - 6 Notes (Snappy)
+                    write_tone_to_speaker(523, 250); // C5 (Half note)
+                    write_silence_to_speaker(30);
+                    write_tone_to_speaker(494, 250); // B4 (Half note)
+                    write_silence_to_speaker(30);
+                    write_tone_to_speaker(466, 125); // Bb4 (Quarter note)
+                    write_silence_to_speaker(30);
+                    write_tone_to_speaker(494, 125); // B4 (Quarter note)
+                    write_silence_to_speaker(30);
+                    write_tone_to_speaker(466, 125); // Bb4 (Quarter note)
+                    write_silence_to_speaker(30);
+                    write_tone_to_speaker(440, 125); // A4 (Quarter note)
+                } else if (s_config.sound_tune == 2) {
+                    // Fart
+                    write_fart_to_speaker(500); 
+                } else if (s_config.sound_tune == 1) {
+                    // Ba-Dum-Tss (Snappy)
+                    write_tone_to_speaker(392, 60);  // G4 (Ba - 8th note)
+                    write_silence_to_speaker(30);    // Staccato gap
+                    write_tone_to_speaker(440, 125); // A4 (Dum - Quarter note)
+                    write_silence_to_speaker(30);    // Staccato gap
+                    write_mixed_cymbal_to_speaker(523, 125); // C5 + Noise (Tss - Quarter note)
+                } else {
+                    // Authentic Casio F-91W Alarm Beep (4x Rapid High-Pitch Pulses)
+                    write_tone_to_speaker(4096, 60);
+                    write_silence_to_speaker(65);
+                    write_tone_to_speaker(4096, 60);
+                    write_silence_to_speaker(65);
+                    write_tone_to_speaker(4096, 60);
+                    write_silence_to_speaker(65);
+                    write_tone_to_speaker(4096, 60);
+                }
                 
                 // --- BUFFER DRAIN ---
                 write_silence_to_speaker(400); 
@@ -441,6 +537,9 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
 
     Tuple *vol_t = dict_find(iter, MESSAGE_KEY_AlertVolume);
     if (vol_t) s_config.alert_volume = get_int_from_tuple(vol_t);
+
+    Tuple *sound_t = dict_find(iter, MESSAGE_KEY_SoundTune);
+    if (sound_t) s_config.sound_tune = get_int_from_tuple(sound_t);
 
     Tuple *font_size_t = dict_find(iter, MESSAGE_KEY_FontSize);
     if (font_size_t) {

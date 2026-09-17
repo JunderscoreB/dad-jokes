@@ -1,0 +1,42 @@
+{
+  "name": "Dad Jokes",
+  "author": "J_B",
+  "version": "1.0.0",
+  "keywords": [
+    "pebble-app"
+  ],
+  "private": true,
+  "dependencies": {
+    "pebble-clay": "^1.0.3"
+  },
+  "pebble": {
+    "displayName": "Dad Jokes",
+    "uuid": "4d5b52c3-3503-477c-b0aa-ab03ed1e8990",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "aplite",
+      "basalt",
+      "chalk",
+      "diorite",
+      "emery"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "messageKeys": [
+      "dummy",
+      "ScheduleMode",
+      "SpecificHour",
+      "SpecificMinute",
+      "WindowStartHour",
+      "WindowEndHour",
+      "AlertStyle",
+      "SoundTune",
+      "FontSize"
+    ],
+    "resources": {
+      "media": []
+    }
+  }
+}

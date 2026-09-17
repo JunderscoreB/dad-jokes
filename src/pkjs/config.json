@@ -1,0 +1,88 @@
+[
+  { "type": "heading", "defaultValue": "Dad Jokes Settings" },
+  {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
+        "defaultValue": "Display Settings"
+      },
+      {
+        "type": "select",
+        "messageKey": "FontSize",
+        "defaultValue": "2",
+        "label": "Text Size",
+        "options": [
+          { "label": "Small", "value": "0" },
+          { "label": "Medium", "value": "1" },
+          { "label": "Large", "value": "2" },
+          { "label": "Extra Large", "value": "3" }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
+        "defaultValue": "Schedule Settings"
+      },
+      {
+        "type": "select",
+        "messageKey": "ScheduleMode",
+        "defaultValue": "0",
+        "label": "Schedule Mode",
+        "options": [
+          { "label": "Specific Time", "value": "0" },
+          { "label": "Random within Window", "value": "1" }
+        ]
+      },
+      { "type": "slider", "messageKey": "SpecificHour", "defaultValue": 12, "label": "Specific Hour (0-23)", "min": 0, "max": 23 },
+      { "type": "slider", "messageKey": "SpecificMinute", "defaultValue": 0, "label": "Specific Minute (0-59)", "min": 0, "max": 59 }
+    ]
+  },
+  {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
+        "defaultValue": "Random Window Range"
+      },
+      { "type": "slider", "messageKey": "WindowStartHour", "defaultValue": 9, "label": "Window Start Hour (0-23)", "min": 0, "max": 23 },
+      { "type": "slider", "messageKey": "WindowEndHour", "defaultValue": 17, "label": "Window End Hour (0-23)", "min": 0, "max": 23 }
+    ]
+  },
+  {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
+        "defaultValue": "Alert Settings"
+      },
+      {
+        "type": "select",
+        "messageKey": "AlertStyle",
+        "defaultValue": "0",
+        "label": "Alert Style",
+        "options": [
+          { "label": "Vibration Only", "value": "0" },
+          { "label": "Sound Only", "value": "1" },
+          { "label": "Vibration & Sound", "value": "2" }
+        ]
+      },
+      {
+        "type": "select",
+        "messageKey": "SoundTune",
+        "defaultValue": "0",
+        "label": "Sound Tune (If enabled)",
+        "options": [
+          { "label": "Classic Beep", "value": "0" },
+          { "label": "Ba-Dum-Tss!", "value": "1" },
+          { "label": "Fart", "value": "2" }
+        ]
+      }
+    ]
+  },
+  { "type": "submit", "defaultValue": "Save Settings" }
+]

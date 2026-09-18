@@ -22,4 +22,4 @@ A native C application optimized for the modern 2026 Core Devices Pebble Time 2.
 5. Install to your watch: `pebble install --phone <PHONE_IP>`
 
 ## Credits
-The dad jokes included in the `jokes.txt` resource file were sourced from [Bustle's Best Dad Jokes compilation](https://www.bustle.com/life/best-dad-jokes).
+The dad jokes included in the `jokes.txt` resource file were sourced from icanhazdadjoke [https://icanhazdadjoke.com/] and Jonas-Werner's Dad Joke API: [https://raw.githubusercontent.com/jonas-werner/dad-joke-api/main/src/jokes.json]

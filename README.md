@@ -23,3 +23,6 @@ A native C application optimized for the modern 2026 Core Devices Pebble Time 2.
 
 ## Credits
 The dad jokes included in the `jokes.txt` resource file were sourced from icanhazdadjoke [https://icanhazdadjoke.com/] and Jonas-Werner's Dad Joke API: [https://raw.githubusercontent.com/jonas-werner/dad-joke-api/main/src/jokes.json]
+
+**AI Disclosure:**
+The development of this application, including the C-based PCM audio synthesis and Pebble-Clay configuration logic, was assisted by artificial intelligence. The AI acted as a pair programmer to optimize hardware-level timings, refactor the UI framework, and troubleshoot Git workflows. All final code was reviewed, tested, and approved by the author.

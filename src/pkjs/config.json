@@ -120,17 +120,17 @@
       },
       {
         "type": "select",
-        "messageKey": "JokesPerWindow",
-        "label": "Jokes per Day",
-        "defaultValue": "3",
+        "messageKey": "JokesPerHour",
+        "label": "Jokes per Hour",
+        "defaultValue": "1",
         "description": "Applies only if 'Random Window' is selected.",
         "options": [
           { "label": "1", "value": "1" },
           { "label": "2", "value": "2" },
           { "label": "3", "value": "3" },
+          { "label": "4", "value": "4" },
           { "label": "5", "value": "5" },
-          { "label": "10", "value": "10" },
-          { "label": "20", "value": "20" }
+          { "label": "10", "value": "10" }
         ]
       }
     ]

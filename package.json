@@ -1,7 +1,7 @@
 {
   "name": "Dad Jokes",
   "author": "J_B",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "keywords": [
     "pebble-app"
   ],
@@ -30,7 +30,7 @@
       "SpecificMinute",
       "WindowStartHour",
       "WindowEndHour",
-      "JokesPerWindow",
+      "JokesPerHour",
       "TimeoutSec",
       "AlertStyle",
       "AlertVolume",

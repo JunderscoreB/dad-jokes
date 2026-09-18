@@ -342,14 +342,11 @@ static void play_alert(void) {
                     write_silence_to_speaker(30);    // Staccato gap
                     write_mixed_cymbal_to_speaker(523, 125); // C5 + Noise (Tss - Quarter note)
                 } else {
-                    // Authentic Casio F-91W Alarm Beep (4x Rapid High-Pitch Pulses)
+                    // Authentic Casio F-91W Alarm Beep (2x Rapid High-Pitch Pulses)
                     write_tone_to_speaker(4096, 60);
                     write_silence_to_speaker(65);
                     write_tone_to_speaker(4096, 60);
                     write_silence_to_speaker(65);
-                    write_tone_to_speaker(4096, 60);
-                    write_silence_to_speaker(65);
-                    write_tone_to_speaker(4096, 60);
                 }
                 
                 // --- BUFFER DRAIN ---

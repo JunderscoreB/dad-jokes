@@ -58,31 +58,30 @@
       </div>
     </div>
 
-    <!-- Audio Wrapper -->
-    <div id="AudioWrapper">
+    <!-- Alert Configuration -->
+    <div class="setting">
+      <label for="AlertStyle">Alert Style</label>
+      <select id="AlertStyle" onchange="toggleAudioSettings()">
+        <option value="0">Vibration Only</option>
+        <option value="1">Sound Only</option>
+        <option value="2" selected>Vibration & Sound</option>
+        <option value="3">Silent</option>
+      </select>
+    </div>
+
+    <div id="AudioGroup">
       <div class="setting">
-        <label for="AlertStyle">Alert Style</label>
-        <select id="AlertStyle" onchange="toggleAudioSettings()">
-          <option value="0">Vibration Only</option>
-          <option value="1">Sound Only</option>
-          <option value="2" selected>Vibration & Sound</option>
+        <label for="SoundTune">Punchline Sound</label>
+        <select id="SoundTune">
+          <option value="0">Classic Digital Beep</option>
+          <option value="1">Ba-Dum-Tss</option>
+          <option value="2">Fart</option>
+          <option value="3">Circus March</option>
         </select>
       </div>
-
-      <div id="AudioGroup">
-        <div class="setting">
-          <label for="SoundTune">Punchline Sound</label>
-          <select id="SoundTune">
-            <option value="0">Classic Digital Beep</option>
-            <option value="1">Ba-Dum-Tss</option>
-            <option value="2">Fart</option>
-            <option value="3">Circus March</option>
-          </select>
-        </div>
-        <div class="setting">
-          <label for="AlertVolume">Speaker Volume (%)</label>
-          <input type="range" id="AlertVolume" min="0" max="100" value="100">
-        </div>
+      <div class="setting">
+        <label for="AlertVolume">Speaker Volume (%)</label>
+        <input type="range" id="AlertVolume" min="0" max="100" value="100">
       </div>
     </div>
 
@@ -112,17 +111,38 @@
     }
 
     function toggleAudioSettings() {
+      var platform = getQueryParam('platform');
       var style = document.getElementById('AlertStyle').value;
-      document.getElementById('AudioGroup').style.display = (style === '0') ? 'none' : 'block';
+      var audioGroup = document.getElementById('AudioGroup');
+
+      if (platform && platform !== 'emery') {
+        audioGroup.style.display = 'none';
+        return;
+      }
+
+      if (style === '1' || style === '2') {
+        audioGroup.style.display = 'block';
+      } else {
+        audioGroup.style.display = 'none';
+      }
     }
 
     window.onload = function() {
       var platform = getQueryParam('platform');
+      var alertSelect = document.getElementById('AlertStyle');
 
-      // Completely hide the audio wrapper if the hardware is not an Emery
       if (platform && platform !== 'emery') {
-        document.getElementById('AudioWrapper').style.display = 'none';
+        var opt1 = alertSelect.querySelector('option[value="1"]');
+        var opt2 = alertSelect.querySelector('option[value="2"]');
+        var opt0 = alertSelect.querySelector('option[value="0"]');
+
+        if (opt1) opt1.remove();
+        if (opt2) opt2.remove();
+        if (opt0) opt0.textContent = 'Vibration';
       }
+
+      toggleSettings();
+      toggleAudioSettings();
     };
 
     document.getElementById('save_button').addEventListener('click', function() {

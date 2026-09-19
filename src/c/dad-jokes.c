@@ -19,8 +19,8 @@ static Layer *s_down_arrow_layer;
 
 static AppTimer *s_timeout_timer = NULL;
 
-static char *s_joke_text_buffer = NULL;
-static char **s_joke_pointers = NULL;
+static char s_current_joke_buffer[512];
+static uint32_t *s_joke_offsets = NULL;
 static uint16_t *s_joke_order = NULL;
 static uint16_t s_num_jokes = 0;
 static uint16_t s_current_index = 0;
@@ -90,7 +90,6 @@ static void write_tone_to_speaker(uint16_t freq_hz, uint16_t duration_ms) {
         }
 
         uint32_t bytes_to_write = chunk_samples * sizeof(int16_t);
-        // Uses the SDK's hardware-level speaker stream to directly push PCM data to the internal DAC.
         uint32_t written_bytes = speaker_stream_write((const void*)buffer, bytes_to_write);
 
         if (written_bytes > 0) {
@@ -186,54 +185,61 @@ static void write_silence_to_speaker(uint16_t duration_ms) {
     }
 }
 
-// --- Text Parsing Engine ---
+// --- Text Parsing Engine (Aplite Safe Streaming) ---
 
 static void load_jokes_from_resource(void) {
     ResHandle handle = resource_get_handle(RESOURCE_ID_JOKES_TXT);
     size_t res_size = resource_size(handle);
 
-    s_joke_text_buffer = malloc(res_size + 1);
-    resource_load(handle, (uint8_t*)s_joke_text_buffer, res_size);
-    s_joke_text_buffer[res_size] = '\0';
-
     s_num_jokes = 0;
+    uint8_t chunk[256];
     bool in_joke = false;
-    for (size_t i = 0; i < res_size; i++) {
-        char c = s_joke_text_buffer[i];
-        if (c == '\r' || c == '\n') {
-            s_joke_text_buffer[i] = '\0';
-            in_joke = false;
-        } else if (!in_joke) {
-            s_num_jokes++;
-            in_joke = true;
-        }
-    }
 
-    s_joke_pointers = malloc(s_num_jokes * sizeof(char*));
-    uint16_t idx = 0;
-    in_joke = false;
-    for (size_t i = 0; i < res_size; i++) {
-        char c = s_joke_text_buffer[i];
-        if (c == '\0') {
-            in_joke = false;
-        } else if (!in_joke) {
-            s_joke_pointers[idx++] = &s_joke_text_buffer[i];
-            in_joke = true;
-        }
-    }
+    for (uint32_t offset = 0; offset < res_size; offset += sizeof(chunk)) {
+        size_t bytes_to_read = res_size - offset;
+        if (bytes_to_read > sizeof(chunk)) bytes_to_read = sizeof(chunk);
 
-    for (uint16_t i = 0; i < s_num_jokes; i++) {
-        char *read_ptr = s_joke_pointers[i];
-        char *write_ptr = s_joke_pointers[i];
-        while (*read_ptr) {
-            if (*read_ptr == '\\' && *(read_ptr + 1) == 'n') {
-                *write_ptr++ = '\n';
-                read_ptr += 2;
-            } else {
-                *write_ptr++ = *read_ptr++;
+        resource_load_byte_range(handle, offset, chunk, bytes_to_read);
+
+        for (size_t i = 0; i < bytes_to_read; i++) {
+            char c = chunk[i];
+            if (c == '\r' || c == '\n') {
+                in_joke = false;
+            } else if (!in_joke) {
+                s_num_jokes++;
+                in_joke = true;
             }
         }
-        *write_ptr = '\0';
+    }
+
+    if (s_num_jokes == 0) return;
+
+    s_joke_offsets = malloc(s_num_jokes * sizeof(uint32_t));
+    if (!s_joke_offsets) {
+        s_num_jokes = 0;
+        return;
+    }
+
+    uint16_t current_idx = 0;
+    in_joke = false;
+
+    for (uint32_t offset = 0; offset < res_size; offset += sizeof(chunk)) {
+        size_t bytes_to_read = res_size - offset;
+        if (bytes_to_read > sizeof(chunk)) bytes_to_read = sizeof(chunk);
+
+        resource_load_byte_range(handle, offset, chunk, bytes_to_read);
+
+        for (size_t i = 0; i < bytes_to_read; i++) {
+            char c = chunk[i];
+            if (c == '\r' || c == '\n') {
+                in_joke = false;
+            } else if (!in_joke) {
+                if (current_idx < s_num_jokes) {
+                    s_joke_offsets[current_idx++] = offset + i;
+                }
+                in_joke = true;
+            }
+        }
     }
 }
 
@@ -268,12 +274,9 @@ static void schedule_next_joke(void) {
         int32_t window_end_sec = s_config.win_end * 3600;
         if (window_end_sec <= window_start_sec) window_end_sec = window_start_sec + 3600;
 
-        // Update to per-hour scheduling
         int32_t jokes_per_hour = s_config.jokes_per_hour > 0 ? s_config.jokes_per_hour : 1;
         int32_t interval = 3600 / jokes_per_hour;
 
-        // Ensure a minimum gap of half the interval to prevent bunching.
-        // We clamp the minimum gap at 65 seconds to safely clear Pebble's 1-minute Wakeup API restriction.
         int32_t min_gap = interval / 2;
         if (min_gap < 65) {
             min_gap = 65;
@@ -286,16 +289,11 @@ static void schedule_next_joke(void) {
 
         time_t target;
         if (now < start_time) {
-            // Before the window opens, queue for the start time + random jitter
             target = start_time + (rand() % interval);
         } else if (now >= end_time) {
-            // After the window closes, queue for tomorrow morning
             target = start_time + SECONDS_IN_DAY + (rand() % interval);
         } else {
-            // We are inside the window. Calculate the next target using our min_gap
             target = now + min_gap + (rand() % interval);
-
-            // If the randomized jump pushes us past the end of the daily window, queue it for tomorrow morning
             if (target > end_time) {
                 target = start_time + SECONDS_IN_DAY + (rand() % interval);
             }
@@ -330,40 +328,34 @@ static void play_alert(void) {
 
             if (speaker_stream_open(SpeakerPcmFormat_16kHz_16bit, current_volume)) {
 
-                // --- HARDWARE WARMUP ---
                 write_silence_to_speaker(250);
 
                 if (s_config.sound_tune == 3) {
-                    // "Entry of the Gladiators" (Circus Theme) - 6 Notes (Snappy)
-                    write_tone_to_speaker(523, 250); // C5 (Half note)
+                    write_tone_to_speaker(523, 250);
                     write_silence_to_speaker(30);
-                    write_tone_to_speaker(494, 250); // B4 (Half note)
+                    write_tone_to_speaker(494, 250);
                     write_silence_to_speaker(30);
-                    write_tone_to_speaker(466, 125); // Bb4 (Quarter note)
+                    write_tone_to_speaker(466, 125);
                     write_silence_to_speaker(30);
-                    write_tone_to_speaker(494, 125); // B4 (Quarter note)
+                    write_tone_to_speaker(494, 125);
                     write_silence_to_speaker(30);
-                    write_tone_to_speaker(466, 125); // Bb4 (Quarter note)
+                    write_tone_to_speaker(466, 125);
                     write_silence_to_speaker(30);
-                    write_tone_to_speaker(440, 125); // A4 (Quarter note)
+                    write_tone_to_speaker(440, 125);
                 } else if (s_config.sound_tune == 2) {
-                    // Fart
                     write_fart_to_speaker(500);
                 } else if (s_config.sound_tune == 1) {
-                    // Ba-Dum-Tss (Snappy)
-                    write_tone_to_speaker(392, 60);  // G4 (Ba - 8th note)
-                    write_silence_to_speaker(30);    // Staccato gap
-                    write_tone_to_speaker(440, 125); // A4 (Dum - Quarter note)
-                    write_silence_to_speaker(30);    // Staccato gap
-                    write_mixed_cymbal_to_speaker(523, 125); // C5 + Noise (Tss - Quarter note)
+                    write_tone_to_speaker(392, 60);
+                    write_silence_to_speaker(30);
+                    write_tone_to_speaker(440, 125);
+                    write_silence_to_speaker(30);
+                    write_mixed_cymbal_to_speaker(523, 125);
                 } else {
-                    // Classic Digital Watch Hourly Chime (2x Pulses at 4096 Hz, 125ms duration)
                     write_tone_to_speaker(4096, 125);
                     write_silence_to_speaker(125);
                     write_tone_to_speaker(4096, 125);
                 }
 
-                // --- BUFFER DRAIN ---
                 write_silence_to_speaker(400);
 
                 speaker_stop();
@@ -390,21 +382,51 @@ static void shuffle_jokes(void) {
 }
 
 static void load_current_joke(void) {
-    if (s_num_jokes == 0) return;
+    if (s_num_jokes == 0 || !s_joke_offsets) return;
 
     uint16_t joke_id = s_joke_order[s_current_index];
-    const char *joke_text = s_joke_pointers[joke_id];
+    uint32_t start_offset = s_joke_offsets[joke_id];
+
+    ResHandle handle = resource_get_handle(RESOURCE_ID_JOKES_TXT);
+    size_t res_size = resource_size(handle);
+
+    size_t read_size = res_size - start_offset;
+    if (read_size > sizeof(s_current_joke_buffer) - 1) {
+        read_size = sizeof(s_current_joke_buffer) - 1;
+    }
+
+    resource_load_byte_range(handle, start_offset, (uint8_t*)s_current_joke_buffer, read_size);
+
+    for (size_t i = 0; i < read_size; i++) {
+        if (s_current_joke_buffer[i] == '\r' || s_current_joke_buffer[i] == '\n') {
+            s_current_joke_buffer[i] = '\0';
+            break;
+        }
+    }
+    s_current_joke_buffer[read_size] = '\0';
+
+    char *read_ptr = s_current_joke_buffer;
+    char *write_ptr = s_current_joke_buffer;
+    while (*read_ptr) {
+        if (*read_ptr == '\\' && *(read_ptr + 1) == 'n') {
+            *write_ptr++ = '\n';
+            read_ptr += 2;
+        } else {
+            *write_ptr++ = *read_ptr++;
+        }
+    }
+    *write_ptr = '\0';
 
     GFont font = get_font_for_preference(s_config.font_size);
     text_layer_set_font(s_joke_text_layer, font);
-    text_layer_set_text(s_joke_text_layer, joke_text);
+    text_layer_set_text(s_joke_text_layer, s_current_joke_buffer);
 
     GRect full_bounds = layer_get_bounds(window_get_root_layer(s_main_window));
     int16_t visible_height = full_bounds.size.h - FOOTER_HEIGHT;
     int16_t text_width = full_bounds.size.w - 20;
 
     GSize content_size = graphics_text_layout_get_content_size(
-        joke_text,
+        s_current_joke_buffer,
         font,
         GRect(0, 0, text_width, 4000),
                                                                GTextOverflowModeWordWrap,
@@ -706,8 +728,7 @@ static void deinit(void) {
     accel_tap_service_unsubscribe();
     window_destroy(s_main_window);
 
-    if (s_joke_text_buffer) free(s_joke_text_buffer);
-    if (s_joke_pointers) free(s_joke_pointers);
+    if (s_joke_offsets) free(s_joke_offsets);
     if (s_joke_order) free(s_joke_order);
 }
 

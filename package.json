@@ -1,14 +1,11 @@
 {
   "name": "Dad Jokes",
   "author": "J_B",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "keywords": [
     "pebble-app"
   ],
   "private": true,
-  "dependencies": {
-    "pebble-clay": "^1.0.3"
-  },
   "pebble": {
     "displayName": "Dad Jokes",
     "uuid": "4d5b52c3-3503-477c-b0aa-ab03ed1e8990",
@@ -19,6 +16,8 @@
       "basalt",
       "chalk",
       "diorite",
+      "flint",
+      "gabbro",
       "emery"
     ],
     "watchapp": {
@@ -46,5 +45,8 @@
         }
       ]
     }
+  },
+  "dependencies": {
+    "@rebble/clay": "^1.1.0"
   }
 }

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dad Jokes Configuration</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: sans-serif; padding: 20px; background-color: #f0f0f0; }
+    .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h2 { margin-top: 0; }
+    .setting { margin-bottom: 15px; }
+    label { display: block; font-weight: bold; margin-bottom: 5px; }
+    select, input { width: 100%; padding: 8px; box-sizing: border-box; }
+    button { width: 100%; padding: 12px; background-color: #ff4700; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Dad Jokes Settings</h2>
+
+    <div class="setting">
+      <label for="ScheduleMode">Delivery Mode</label>
+      <select id="ScheduleMode" onchange="toggleSettings()">
+        <option value="0">Specific Time</option>
+        <option value="1">Random Window</option>
+      </select>
+    </div>
+
+    <!-- Specific Time Settings -->
+    <div id="SpecificTimeGroup">
+      <div class="setting">
+        <label for="SpecificHour">Hour (0-23)</label>
+        <input type="number" id="SpecificHour" min="0" max="23" value="12">
+      </div>
+      <div class="setting">
+        <label for="SpecificMinute">Minute (0-59)</label>
+        <input type="number" id="SpecificMinute" min="0" max="59" value="0">
+      </div>
+    </div>
+
+    <!-- Random Window Settings -->
+    <div id="RandomWindowGroup" style="display: none;">
+      <div class="setting">
+        <label for="WindowStartHour">Start Hour (0-23)</label>
+        <input type="number" id="WindowStartHour" min="0" max="23" value="9">
+      </div>
+      <div class="setting">
+        <label for="WindowEndHour">End Hour (0-23)</label>
+        <input type="number" id="WindowEndHour" min="0" max="23" value="17">
+      </div>
+      <div class="setting">
+        <label for="JokesPerHour">Jokes Per Hour</label>
+        <select id="JokesPerHour">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="5">5</option>
+          <option value="10">10</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="setting">
+      <label for="AlertStyle">Alert Style</label>
+      <select id="AlertStyle" onchange="toggleAudioSettings()">
+        <option value="0">Vibration Only</option>
+        <option value="1">Sound Only</option>
+        <option value="2" selected>Vibration & Sound</option>
+      </select>
+    </div>
+
+    <div id="AudioGroup">
+      <div class="setting">
+        <label for="SoundTune">Punchline Sound</label>
+        <select id="SoundTune">
+          <option value="0">Classic Digital Beep</option>
+          <option value="1">Ba-Dum-Tss</option>
+          <option value="2">Fart</option>
+          <option value="3">Circus March</option>
+        </select>
+      </div>
+      <div class="setting">
+        <label for="AlertVolume">Speaker Volume (%)</label>
+        <input type="range" id="AlertVolume" min="0" max="100" value="100">
+      </div>
+    </div>
+
+    <div class="setting">
+      <label for="FontSize">Font Size</label>
+      <select id="FontSize">
+        <option value="0">Small</option>
+        <option value="1">Medium</option>
+        <option value="2" selected>Large</option>
+        <option value="3">Extra Large</option>
+      </select>
+    </div>
+
+    <button id="save_button">Save Settings</button>
+  </div>
+
+  <script>
+    function toggleSettings() {
+      var mode = document.getElementById('ScheduleMode').value;
+      document.getElementById('SpecificTimeGroup').style.display = (mode === '0') ? 'block' : 'none';
+      document.getElementById('RandomWindowGroup').style.display = (mode === '1') ? 'block' : 'none';
+    }
+
+    function toggleAudioSettings() {
+      var style = document.getElementById('AlertStyle').value;
+      document.getElementById('AudioGroup').style.display = (style === '0') ? 'none' : 'block';
+    }
+
+    document.getElementById('save_button').addEventListener('click', function() {
+      // Build the configuration dictionary
+      var options = {
+        'ScheduleMode': parseInt(document.getElementById('ScheduleMode').value),
+        'SpecificHour': parseInt(document.getElementById('SpecificHour').value),
+        'SpecificMinute': parseInt(document.getElementById('SpecificMinute').value),
+        'WindowStartHour': parseInt(document.getElementById('WindowStartHour').value),
+        'WindowEndHour': parseInt(document.getElementById('WindowEndHour').value),
+        'JokesPerHour': parseInt(document.getElementById('JokesPerHour').value),
+        'AlertStyle': parseInt(document.getElementById('AlertStyle').value),
+        'SoundTune': parseInt(document.getElementById('SoundTune').value),
+        'AlertVolume': parseInt(document.getElementById('AlertVolume').value),
+        'FontSize': parseInt(document.getElementById('FontSize').value),
+        'TimeoutSec': 30 // Hardcoded or added as a field
+      };
+
+      // Redirect the hidden webview back to the Pebble app with the encoded JSON payload
+      var return_to = 'pebblejs://close#';
+      document.location = return_to + encodeURIComponent(JSON.stringify(options));
+    });
+  </script>
+</body>
+</html>

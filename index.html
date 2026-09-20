@@ -9,8 +9,10 @@
     h2 { margin-top: 0; }
     .setting { margin-bottom: 15px; }
     label { display: block; font-weight: bold; margin-bottom: 5px; }
-    select, input { width: 100%; padding: 8px; box-sizing: border-box; }
+    select, input, textarea { width: 100%; padding: 8px; box-sizing: border-box; }
     button { width: 100%; padding: 12px; background-color: #ff4700; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
+    .secondary-btn { background-color: #ccc; color: #333; margin-top: 10px; }
+    .hint { font-size: 12px; color: #666; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -29,23 +31,69 @@
     <div id="SpecificTimeGroup">
       <div class="setting">
         <label for="SpecificHour">Hour (0-23)</label>
-        <input type="number" id="SpecificHour" min="0" max="23" value="12">
+        <select id="SpecificHour">
+          <option value="0">00:00 (Midnight)</option><option value="1">01:00</option>
+          <option value="2">02:00</option><option value="3">03:00</option>
+          <option value="4">04:00</option><option value="5">05:00</option>
+          <option value="6">06:00</option><option value="7">07:00</option>
+          <option value="8">08:00</option><option value="9">09:00</option>
+          <option value="10">10:00</option><option value="11">11:00</option>
+          <option value="12">12:00 (Noon)</option><option value="13">13:00</option>
+          <option value="14">14:00</option><option value="15">15:00</option>
+          <option value="16">16:00</option><option value="17">17:00</option>
+          <option value="18">18:00</option><option value="19">19:00</option>
+          <option value="20">20:00</option><option value="21">21:00</option>
+          <option value="22">22:00</option><option value="23">23:00</option>
+        </select>
       </div>
       <div class="setting">
         <label for="SpecificMinute">Minute (0-59)</label>
-        <input type="number" id="SpecificMinute" min="0" max="59" value="0">
+        <select id="SpecificMinute">
+          <option value="0">00</option><option value="1">01</option><option value="2">02</option><option value="3">03</option><option value="4">04</option><option value="5">05</option><option value="6">06</option><option value="7">07</option><option value="8">08</option><option value="9">09</option>
+          <option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option>
+          <option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option><option value="29">29</option>
+          <option value="30">30</option><option value="31">31</option><option value="32">32</option><option value="33">33</option><option value="34">34</option><option value="35">35</option><option value="36">36</option><option value="37">37</option><option value="38">38</option><option value="39">39</option>
+          <option value="40">40</option><option value="41">41</option><option value="42">42</option><option value="43">43</option><option value="44">44</option><option value="45">45</option><option value="46">46</option><option value="47">47</option><option value="48">48</option><option value="49">49</option>
+          <option value="50">50</option><option value="51">51</option><option value="52">52</option><option value="53">53</option><option value="54">54</option><option value="55">55</option><option value="56">56</option><option value="57">57</option><option value="58">58</option><option value="59">59</option>
+        </select>
       </div>
     </div>
 
     <!-- Random Window Settings -->
     <div id="RandomWindowGroup" style="display: none;">
       <div class="setting">
-        <label for="WindowStartHour">Start Hour (0-23)</label>
-        <input type="number" id="WindowStartHour" min="0" max="23" value="9">
+        <label for="WindowStartHour">Window Start Hour</label>
+        <select id="WindowStartHour">
+          <option value="0">00:00 (Midnight)</option><option value="1">01:00</option>
+          <option value="2">02:00</option><option value="3">03:00</option>
+          <option value="4">04:00</option><option value="5">05:00</option>
+          <option value="6">06:00</option><option value="7">07:00</option>
+          <option value="8">08:00</option><option value="9">09:00</option>
+          <option value="10">10:00</option><option value="11">11:00</option>
+          <option value="12">12:00 (Noon)</option><option value="13">13:00</option>
+          <option value="14">14:00</option><option value="15">15:00</option>
+          <option value="16">16:00</option><option value="17">17:00</option>
+          <option value="18">18:00</option><option value="19">19:00</option>
+          <option value="20">20:00</option><option value="21">21:00</option>
+          <option value="22">22:00</option><option value="23">23:00</option>
+        </select>
       </div>
       <div class="setting">
-        <label for="WindowEndHour">End Hour (0-23)</label>
-        <input type="number" id="WindowEndHour" min="0" max="23" value="17">
+        <label for="WindowEndHour">Window End Hour</label>
+        <select id="WindowEndHour">
+          <option value="0">00:00 (Midnight)</option><option value="1">01:00</option>
+          <option value="2">02:00</option><option value="3">03:00</option>
+          <option value="4">04:00</option><option value="5">05:00</option>
+          <option value="6">06:00</option><option value="7">07:00</option>
+          <option value="8">08:00</option><option value="9">09:00</option>
+          <option value="10">10:00</option><option value="11">11:00</option>
+          <option value="12">12:00 (Noon)</option><option value="13">13:00</option>
+          <option value="14">14:00</option><option value="15">15:00</option>
+          <option value="16">16:00</option><option value="17">17:00</option>
+          <option value="18">18:00</option><option value="19">19:00</option>
+          <option value="20">20:00</option><option value="21">21:00</option>
+          <option value="22">22:00</option><option value="23">23:00</option>
+        </select>
       </div>
       <div class="setting">
         <label for="JokesPerHour">Jokes Per Hour</label>
@@ -56,6 +104,33 @@
           <option value="10">10</option>
         </select>
       </div>
+    </div>
+
+    <div class="setting">
+      <label for="TimeoutSec">App Timeout (Seconds)</label>
+      <select id="TimeoutSec">
+        <option value="0">Disabled (Stay Open)</option>
+        <option value="15">15 Seconds</option>
+        <option value="30" selected>30 Seconds</option>
+        <option value="60">60 Seconds</option>
+        <option value="120">120 Seconds</option>
+      </select>
+      <div class="hint">How long before the app closes automatically.</div>
+    </div>
+
+    <!-- Custom Jokes Section -->
+    <div class="setting">
+      <label for="CustomJokeMode">Joke Roster Mode</label>
+      <select id="CustomJokeMode">
+        <option value="0">Use Built-In Only</option>
+        <option value="1">Mix Built-In & Custom</option>
+        <option value="2">Custom Only (Override)</option>
+      </select>
+    </div>
+    <div class="setting" id="CustomJokesGroup">
+      <label for="CustomJokesText">Custom Joke List (One per line)</label>
+      <textarea id="CustomJokesText" rows="6" placeholder="// PASTE YOUR JOKES HERE. ONE JOKE PER LINE."></textarea>
+      <button type="button" class="secondary-btn" onclick="clearJokes()">Clear Custom Jokes</button>
     </div>
 
     <!-- Alert Configuration -->
@@ -127,6 +202,10 @@
       }
     }
 
+    function clearJokes() {
+      document.getElementById('CustomJokesText').value = "";
+    }
+
     window.onload = function() {
       var platform = getQueryParam('platform');
       var alertSelect = document.getElementById('AlertStyle');
@@ -139,6 +218,27 @@
         if (opt1) opt1.remove();
         if (opt2) opt2.remove();
         if (opt0) opt0.textContent = 'Vibration';
+      }
+
+      var configStr = getQueryParam('config');
+      if (configStr) {
+        try {
+          var config = JSON.parse(configStr);
+          var fields = [
+            'ScheduleMode', 'SpecificHour', 'SpecificMinute', 'WindowStartHour',
+            'WindowEndHour', 'JokesPerHour', 'TimeoutSec', 'CustomJokeMode',
+            'AlertStyle', 'SoundTune', 'AlertVolume', 'FontSize'
+          ];
+          for (var i = 0; i < fields.length; i++) {
+            var f = fields[i];
+            if (config[f] !== undefined && document.getElementById(f)) {
+              document.getElementById(f).value = config[f];
+            }
+          }
+          if (config.CustomJokesText !== undefined) {
+            document.getElementById('CustomJokesText').value = config.CustomJokesText.split('|').join('\n');
+          }
+        } catch(e) {}
       }
 
       toggleSettings();
@@ -157,10 +257,17 @@
         'SoundTune': parseInt(document.getElementById('SoundTune').value),
         'AlertVolume': parseInt(document.getElementById('AlertVolume').value),
         'FontSize': parseInt(document.getElementById('FontSize').value),
-        'TimeoutSec': 30
+        'CustomJokeMode': parseInt(document.getElementById('CustomJokeMode').value),
+        'CustomJokesText': document.getElementById('CustomJokesText').value.replace(/\n/g, '|'),
+        'TimeoutSec': parseInt(document.getElementById('TimeoutSec').value)
       };
 
-      var return_to = 'pebblejs://close#';
+      // Ensure the return_to URL correctly targets the emulator's webview listener
+      var return_to = getQueryParam('return_to');
+      if (!return_to) {
+        return_to = 'pebblejs://close#';
+      }
+
       document.location = return_to + encodeURIComponent(JSON.stringify(options));
     });
   </script>

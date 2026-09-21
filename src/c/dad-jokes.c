@@ -7,7 +7,6 @@
 #define WAKEUP_REASON      1337
 #define SECONDS_IN_DAY     86400
 #define SCROLL_STEP_PX     40
-#define FOOTER_HEIGHT      24
 
 static Window *s_main_window;
 static ScrollLayer *s_scroll_layer;
@@ -18,11 +17,13 @@ static Layer *s_up_arrow_layer;
 static Layer *s_down_arrow_layer;
 
 static AppTimer *s_timeout_timer = NULL;
+static AppTimer *s_deferred_joke_timer = NULL;
+static bool s_is_phone_ready = false;
 
 static char s_current_joke_buffer[512];
 static uint32_t *s_joke_offsets = NULL;
 static uint16_t *s_joke_order = NULL;
-static uint16_t s_num_jokes = 0;
+static uint16_t s_num_builtin_jokes = 0;
 static uint16_t s_current_index = 0;
 static uint32_t s_shuffle_seed = 0;
 
@@ -38,6 +39,9 @@ typedef struct {
     int32_t alert_style;
     int32_t sound_tune;
     int32_t font_size;
+    int32_t joke_mode; // 0 = Built-In, 1 = Mixed, 2 = Custom Only
+    int32_t custom_joke_count;
+    int32_t dark_mode; // 0 = Light, 1 = Dark
 } AppConfig;
 
 static AppConfig s_config = {
@@ -51,8 +55,70 @@ static AppConfig s_config = {
     .alert_volume = 100,
     .alert_style = 0,
     .sound_tune = 0,
-    .font_size = 2
+    .font_size = 2,
+    .joke_mode = 0,
+    .custom_joke_count = 0,
+    .dark_mode = 0
 };
+
+// Forward declaration
+static void load_builtin_joke(void);
+static void load_current_joke(void);
+static void next_joke(void);
+static void schedule_next_joke(void);
+static void display_joke(const char *joke_text);
+
+// --- Theme Application ---
+
+static void update_ui_colors(void) {
+    GColor bg_color = s_config.dark_mode ? GColorBlack : GColorWhite;
+    GColor fg_color = s_config.dark_mode ? GColorWhite : GColorBlack;
+
+    window_set_background_color(s_main_window, bg_color);
+
+    text_layer_set_background_color(s_joke_text_layer, GColorClear);
+    text_layer_set_background_color(s_prompt_text_layer, GColorClear);
+
+    text_layer_set_text_color(s_joke_text_layer, fg_color);
+    text_layer_set_text_color(s_prompt_text_layer, fg_color);
+
+    scroll_layer_set_shadow_hidden(s_scroll_layer, s_config.dark_mode != 0);
+
+    ContentIndicator *indicator = scroll_layer_get_content_indicator(s_scroll_layer);
+
+    GColor indicator_bg;
+    GColor indicator_fg;
+
+    if (s_config.dark_mode) {
+        indicator_bg = GColorBlack;
+        indicator_fg = GColorWhite;
+    } else {
+        indicator_bg = GColorWhite;
+        indicator_fg = GColorBlack;
+    }
+
+    ContentIndicatorConfig up_config = (ContentIndicatorConfig) {
+        .layer = s_up_arrow_layer,
+        .times_out = false,
+        .alignment = GAlignCenter,
+        .colors = {
+            .foreground = indicator_fg,
+            .background = indicator_bg
+        }
+    };
+    content_indicator_configure_direction(indicator, ContentIndicatorDirectionUp, &up_config);
+
+    ContentIndicatorConfig down_config = (ContentIndicatorConfig) {
+        .layer = s_down_arrow_layer,
+        .times_out = false,
+        .alignment = GAlignCenter,
+        .colors = {
+            .foreground = indicator_fg,
+            .background = indicator_bg
+        }
+    };
+    content_indicator_configure_direction(indicator, ContentIndicatorDirectionDown, &down_config);
+}
 
 // --- Timeout Engine ---
 
@@ -187,11 +253,11 @@ static void write_silence_to_speaker(uint16_t duration_ms) {
 
 // --- Text Parsing Engine (Aplite Safe Streaming) ---
 
-static void load_jokes_from_resource(void) {
+static void load_builtin_jokes_from_resource(void) {
     ResHandle handle = resource_get_handle(RESOURCE_ID_JOKES_TXT);
     size_t res_size = resource_size(handle);
 
-    s_num_jokes = 0;
+    s_num_builtin_jokes = 0;
     uint8_t chunk[256];
     bool in_joke = false;
 
@@ -206,17 +272,17 @@ static void load_jokes_from_resource(void) {
             if (c == '\r' || c == '\n') {
                 in_joke = false;
             } else if (!in_joke) {
-                s_num_jokes++;
+                s_num_builtin_jokes++;
                 in_joke = true;
             }
         }
     }
 
-    if (s_num_jokes == 0) return;
+    if (s_num_builtin_jokes == 0) return;
 
-    s_joke_offsets = malloc(s_num_jokes * sizeof(uint32_t));
+    s_joke_offsets = malloc(s_num_builtin_jokes * sizeof(uint32_t));
     if (!s_joke_offsets) {
-        s_num_jokes = 0;
+        s_num_builtin_jokes = 0;
         return;
     }
 
@@ -234,7 +300,7 @@ static void load_jokes_from_resource(void) {
             if (c == '\r' || c == '\n') {
                 in_joke = false;
             } else if (!in_joke) {
-                if (current_idx < s_num_jokes) {
+                if (current_idx < s_num_builtin_jokes) {
                     s_joke_offsets[current_idx++] = offset + i;
                 }
                 in_joke = true;
@@ -258,17 +324,15 @@ static GFont get_font_for_preference(int32_t font_pref) {
 
 static void schedule_next_joke(void) {
     time_t now = time(NULL);
-    struct tm *t = localtime(&now);
+    time_t midnight = time_start_of_today();
+    time_t target;
 
     if (s_config.mode == 0) {
-        t->tm_hour = s_config.spec_hour;
-        t->tm_min = s_config.spec_minute;
-        t->tm_sec = 0;
-        time_t target = mktime(t);
-        if (target <= now) target += SECONDS_IN_DAY;
+        target = midnight + (s_config.spec_hour * 3600) + (s_config.spec_minute * 60);
 
-        wakeup_cancel_all();
-        wakeup_schedule(target, WAKEUP_REASON, false);
+        if (target <= now) {
+            target += SECONDS_IN_DAY;
+        }
     } else {
         int32_t window_start_sec = s_config.win_start * 3600;
         int32_t window_end_sec = s_config.win_end * 3600;
@@ -282,12 +346,9 @@ static void schedule_next_joke(void) {
             min_gap = 65;
         }
 
-        t->tm_hour = 0; t->tm_min = 0; t->tm_sec = 0;
-        time_t midnight = mktime(t);
         time_t start_time = midnight + window_start_sec;
         time_t end_time = midnight + window_end_sec;
 
-        time_t target;
         if (now < start_time) {
             target = start_time + (rand() % interval);
         } else if (now >= end_time) {
@@ -298,13 +359,26 @@ static void schedule_next_joke(void) {
                 target = start_time + SECONDS_IN_DAY + (rand() % interval);
             }
         }
-
-        wakeup_cancel_all();
-        wakeup_schedule(target, WAKEUP_REASON, false);
     }
+
+    wakeup_cancel_all();
+
+    WakeupId id;
+    int retries = 0;
+    do {
+        id = wakeup_schedule(target, WAKEUP_REASON, false);
+        if (id == E_RANGE) {
+            target += 60;
+        }
+        retries++;
+    } while (id == E_RANGE && retries < 15);
 }
 
 static void play_alert(void) {
+    if (quiet_time_is_active()) {
+        return;
+    }
+
     bool do_vibe = (s_config.alert_style == 0 || s_config.alert_style == 2);
     bool do_sound = (s_config.alert_style == 1 || s_config.alert_style == 2);
 
@@ -368,12 +442,27 @@ static void play_alert(void) {
 // --- Data & Rollover Logic ---
 
 static void shuffle_jokes(void) {
+    uint16_t total_jokes = 0;
+    if (s_config.joke_mode == 0) {
+        total_jokes = s_num_builtin_jokes;
+    } else if (s_config.joke_mode == 1) {
+        total_jokes = s_num_builtin_jokes + s_config.custom_joke_count;
+    } else if (s_config.joke_mode == 2) {
+        total_jokes = s_config.custom_joke_count;
+    }
+
+    if (total_jokes == 0) return;
+
+    if (s_joke_order) free(s_joke_order);
+    s_joke_order = malloc(total_jokes * sizeof(uint16_t));
+    if (!s_joke_order) return;
+
     srand(s_shuffle_seed);
-    for (uint16_t i = 0; i < s_num_jokes; i++) {
+    for (uint16_t i = 0; i < total_jokes; i++) {
         s_joke_order[i] = i;
     }
 
-    for (uint16_t i = s_num_jokes - 1; i > 0; i--) {
+    for (uint16_t i = total_jokes - 1; i > 0; i--) {
         uint16_t j = rand() % (i + 1);
         uint16_t temp = s_joke_order[i];
         s_joke_order[i] = s_joke_order[j];
@@ -381,12 +470,43 @@ static void shuffle_jokes(void) {
     }
 }
 
-static void load_current_joke(void) {
-    if (s_num_jokes == 0 || !s_joke_offsets) return;
+static void display_joke(const char *joke_text) {
+    GFont font = get_font_for_preference(s_config.font_size);
+    text_layer_set_font(s_joke_text_layer, font);
+    text_layer_set_text(s_joke_text_layer, joke_text);
+
+    GRect full_bounds = layer_get_bounds(window_get_root_layer(s_main_window));
+    int16_t text_width = PBL_IF_ROUND_ELSE(full_bounds.size.w, full_bounds.size.w - 20);
+    int16_t visible_height = full_bounds.size.h; // Giving scroll layer access to full display height
+
+    // Temporarily expand height for measurement
+    text_layer_set_size(s_joke_text_layer, GSize(text_width, 4000));
+    GSize content_size = text_layer_get_content_size(s_joke_text_layer);
+
+    int16_t top_margin = PBL_IF_ROUND_ELSE(18, 0);
+    // Explicit padding added directly to the layer height. This extends the scroll layer's
+    // scrollable envelope past the bounding box of the text, dodging the round bezel.
+    int16_t bottom_margin = PBL_IF_ROUND_ELSE(50, 20);
+
+    text_layer_set_size(s_joke_text_layer, GSize(text_width, content_size.h + bottom_margin));
+
+    int16_t total_scroll_height = top_margin + content_size.h + bottom_margin;
+    if (total_scroll_height < visible_height) {
+        total_scroll_height = visible_height;
+    }
+
+    scroll_layer_set_content_size(s_scroll_layer, GSize(text_width, total_scroll_height));
+    scroll_layer_set_content_offset(s_scroll_layer, GPointZero, false);
+}
+
+static void load_builtin_joke(void) {
+    if (s_num_builtin_jokes == 0 || !s_joke_offsets) return;
 
     uint16_t joke_id = s_joke_order[s_current_index];
-    uint32_t start_offset = s_joke_offsets[joke_id];
 
+    joke_id = joke_id % s_num_builtin_jokes;
+
+    uint32_t start_offset = s_joke_offsets[joke_id];
     ResHandle handle = resource_get_handle(RESOURCE_ID_JOKES_TXT);
     size_t res_size = resource_size(handle);
 
@@ -417,37 +537,116 @@ static void load_current_joke(void) {
     }
     *write_ptr = '\0';
 
-    GFont font = get_font_for_preference(s_config.font_size);
-    text_layer_set_font(s_joke_text_layer, font);
-    text_layer_set_text(s_joke_text_layer, s_current_joke_buffer);
+    display_joke(s_current_joke_buffer);
+}
 
-    GRect full_bounds = layer_get_bounds(window_get_root_layer(s_main_window));
-    int16_t visible_height = full_bounds.size.h - FOOTER_HEIGHT;
-    int16_t text_width = full_bounds.size.w - 20;
+static void deferred_joke_request_cb(void *context) {
+    s_deferred_joke_timer = NULL;
+    load_current_joke();
+    schedule_next_joke();
+}
 
-    GSize content_size = graphics_text_layout_get_content_size(
-        s_current_joke_buffer,
-        font,
-        GRect(0, 0, text_width, 4000),
-                                                               GTextOverflowModeWordWrap,
-                                                               GTextAlignmentLeft
-    );
-
-    content_size.h += 16;
-    if (content_size.h < visible_height) {
-        content_size.h = visible_height;
+static void load_current_joke(void) {
+    if (!s_is_phone_ready && s_config.joke_mode != 0) {
+        if (s_config.joke_mode == 2) {
+            display_joke("Loading custom jokes...\n\nPlease wait.");
+        } else {
+            load_builtin_joke();
+        }
+        return;
     }
 
-    text_layer_set_size(s_joke_text_layer, GSize(text_width, content_size.h));
-    scroll_layer_set_content_size(s_scroll_layer, GSize(text_width, content_size.h));
-    scroll_layer_set_content_offset(s_scroll_layer, GPointZero, false);
+    uint16_t total_jokes = 0;
+    if (s_config.joke_mode == 0) {
+        total_jokes = s_num_builtin_jokes;
+    } else if (s_config.joke_mode == 1) {
+        total_jokes = s_num_builtin_jokes + s_config.custom_joke_count;
+    } else if (s_config.joke_mode == 2) {
+        total_jokes = s_config.custom_joke_count;
+    }
+
+    if (s_config.joke_mode == 2 && total_jokes == 0) {
+        display_joke("Your custom joke list is empty.\n\nPlease add jokes in the Pebble app settings.");
+        return;
+    }
+
+    if (total_jokes == 0 || !s_joke_order) {
+        load_builtin_joke();
+        return;
+    }
+
+    if (s_current_index >= total_jokes) {
+        s_current_index = 0;
+    }
+
+    uint16_t joke_id = s_joke_order[s_current_index];
+    bool fetch_from_phone = false;
+    uint32_t phone_idx = 0;
+
+    if (s_config.joke_mode == 2) {
+        fetch_from_phone = true;
+        phone_idx = joke_id;
+    } else if (s_config.joke_mode == 1 && joke_id >= s_num_builtin_jokes) {
+        fetch_from_phone = true;
+        phone_idx = joke_id - s_num_builtin_jokes;
+    }
+
+    if (fetch_from_phone) {
+        if (!connection_service_peek_pebble_app_connection()) {
+            if (s_config.joke_mode == 2) {
+                display_joke("Phone disconnected.\n\nReconnect to load custom jokes.");
+            } else {
+                load_builtin_joke();
+            }
+            return;
+        }
+
+        if (!s_is_phone_ready) {
+            load_builtin_joke();
+            return;
+        }
+
+        DictionaryIterator *iter;
+        AppMessageResult outbox_res = app_message_outbox_begin(&iter);
+        if (outbox_res == APP_MSG_OK) {
+            dict_write_uint32(iter, MESSAGE_KEY_RequestJokeIdx, phone_idx);
+            if (app_message_outbox_send() == APP_MSG_OK) {
+                return;
+            }
+        } else if (outbox_res == APP_MSG_BUSY) {
+            if (s_deferred_joke_timer) app_timer_cancel(s_deferred_joke_timer);
+            s_deferred_joke_timer = app_timer_register(150, deferred_joke_request_cb, NULL);
+            return;
+        }
+
+        if (s_config.joke_mode == 2) {
+            display_joke("Failed to contact phone.\n\nRetrying...");
+        } else {
+            load_builtin_joke();
+        }
+        return;
+    }
+
+    load_builtin_joke();
 }
 
 static void next_joke(void) {
-    if (s_num_jokes == 0) return;
+    uint16_t total_jokes = 0;
+    if (s_config.joke_mode == 0) {
+        total_jokes = s_num_builtin_jokes;
+    } else if (s_config.joke_mode == 1) {
+        total_jokes = s_num_builtin_jokes + s_config.custom_joke_count;
+    } else if (s_config.joke_mode == 2) {
+        total_jokes = s_config.custom_joke_count;
+    }
+
+    if (total_jokes == 0) {
+        if (s_config.joke_mode == 2) load_current_joke();
+        return;
+    }
 
     s_current_index++;
-    if (s_current_index >= s_num_jokes) {
+    if (s_current_index >= total_jokes) {
         s_shuffle_seed = time(NULL);
         s_current_index = 0;
         persist_write_int(PERSIST_KEY_SEED, s_shuffle_seed);
@@ -465,7 +664,7 @@ static void adjust_scroll_offset(int16_t delta_y, bool animated) {
     GRect full_bounds = layer_get_bounds(window_get_root_layer(s_main_window));
     GSize content_size = scroll_layer_get_content_size(s_scroll_layer);
 
-    int16_t visible_height = full_bounds.size.h - FOOTER_HEIGHT;
+    int16_t visible_height = full_bounds.size.h;
     int16_t min_y = -(content_size.h - visible_height);
     if (min_y > 0) min_y = 0;
 
@@ -486,7 +685,7 @@ static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
     adjust_scroll_offset(SCROLL_STEP_PX, true);
 }
 
-static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
+static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
     adjust_scroll_offset(-SCROLL_STEP_PX, true);
 }
 
@@ -497,10 +696,12 @@ static void next_joke_handler(ClickRecognizerRef recognizer, void *context) {
 }
 
 static void click_config_provider(void *context) {
+    // Reassigned BUTTON_ID_SELECT to handle our next joke action[cite: 2]
+    // Reassigned BUTTON_ID_DOWN to scroll down[cite: 2]
     window_single_click_subscribe(BUTTON_ID_BACK, button_dismiss_handler);
     window_single_click_subscribe(BUTTON_ID_UP, up_click_handler);
-    window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
-    window_single_click_subscribe(BUTTON_ID_DOWN, next_joke_handler);
+    window_single_click_subscribe(BUTTON_ID_SELECT, next_joke_handler);
+    window_single_click_subscribe(BUTTON_ID_DOWN, down_click_handler);
 }
 
 static void tap_handler(AccelAxisType axis, int32_t direction) {
@@ -537,7 +738,42 @@ static int32_t get_int_from_tuple(Tuple *t) {
     return 0;
 }
 
+static void outbox_sent_handler(DictionaryIterator *iterator, void *context) {
+}
+
+static void outbox_failed_handler(DictionaryIterator *iterator, AppMessageResult reason, void *context) {
+    if (s_config.joke_mode == 2) {
+        display_joke("Failed to fetch joke from phone.\n\nCheck Bluetooth connection.");
+    } else {
+        load_builtin_joke();
+    }
+}
+
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
+    Tuple *deliver_t = dict_find(iter, MESSAGE_KEY_DeliverJokeText);
+    if (deliver_t) {
+        strncpy(s_current_joke_buffer, deliver_t->value->cstring, sizeof(s_current_joke_buffer) - 1);
+        s_current_joke_buffer[sizeof(s_current_joke_buffer) - 1] = '\0';
+
+        char *read_ptr = s_current_joke_buffer;
+        char *write_ptr = s_current_joke_buffer;
+        while (*read_ptr) {
+            if (*read_ptr == '\\' && *(read_ptr + 1) == 'n') {
+                *write_ptr++ = '\n';
+                read_ptr += 2;
+            } else {
+                *write_ptr++ = *read_ptr++;
+            }
+        }
+        *write_ptr = '\0';
+
+        display_joke(s_current_joke_buffer);
+        return;
+    }
+
+    bool should_reshuffle = false;
+    bool should_update_colors = false;
+
     Tuple *mode_t = dict_find(iter, MESSAGE_KEY_ScheduleMode);
     if (mode_t) s_config.mode = get_int_from_tuple(mode_t);
 
@@ -575,12 +811,51 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
     if (sound_t) s_config.sound_tune = get_int_from_tuple(sound_t);
 
     Tuple *font_size_t = dict_find(iter, MESSAGE_KEY_FontSize);
-    if (font_size_t) {
-        s_config.font_size = get_int_from_tuple(font_size_t);
-        load_current_joke();
+    if (font_size_t) s_config.font_size = get_int_from_tuple(font_size_t);
+
+    Tuple *dark_mode_t = dict_find(iter, MESSAGE_KEY_DarkMode);
+    if (dark_mode_t) {
+        int32_t new_dark_mode = get_int_from_tuple(dark_mode_t);
+        if (s_config.dark_mode != new_dark_mode) {
+            s_config.dark_mode = new_dark_mode;
+            should_update_colors = true;
+        }
+    }
+
+    Tuple *joke_mode_t = dict_find(iter, MESSAGE_KEY_CustomJokeMode);
+    if (joke_mode_t) {
+        s_is_phone_ready = true;
+        int32_t new_mode = get_int_from_tuple(joke_mode_t);
+        if (s_config.joke_mode != new_mode) {
+            s_config.joke_mode = new_mode;
+            should_reshuffle = true;
+        }
+    }
+
+    Tuple *count_t = dict_find(iter, MESSAGE_KEY_CustomJokeCount);
+    if (count_t) {
+        int32_t new_count = get_int_from_tuple(count_t);
+        if (s_config.custom_joke_count != new_count) {
+            s_config.custom_joke_count = new_count;
+            should_reshuffle = true;
+        }
     }
 
     persist_write_data(PERSIST_KEY_CONFIG, &s_config, sizeof(AppConfig));
+
+    if (should_update_colors) {
+        update_ui_colors();
+    }
+
+    if (should_reshuffle) {
+        s_shuffle_seed = time(NULL);
+        s_current_index = 0;
+        persist_write_int(PERSIST_KEY_SEED, s_shuffle_seed);
+        persist_write_int(PERSIST_KEY_INDEX, s_current_index);
+        shuffle_jokes();
+    }
+
+    load_current_joke();
     schedule_next_joke();
 }
 
@@ -589,7 +864,8 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
 static void main_window_load(Window *window) {
     GRect full_bounds = layer_get_bounds(window_get_root_layer(window));
 
-    GRect scroll_bounds = GRect(0, 0, full_bounds.size.w - 20, full_bounds.size.h - FOOTER_HEIGHT);
+    int16_t text_width = PBL_IF_ROUND_ELSE(full_bounds.size.w, full_bounds.size.w - 20);
+    GRect scroll_bounds = GRect(0, 0, text_width, full_bounds.size.h); // Span the entire screen height
     s_scroll_layer = scroll_layer_create(scroll_bounds);
     scroll_layer_set_click_config_onto_window(s_scroll_layer, window);
 
@@ -598,52 +874,44 @@ static void main_window_load(Window *window) {
     };
     scroll_layer_set_callbacks(s_scroll_layer, callbacks);
 
-    s_joke_text_layer = text_layer_create(GRect(0, 0, scroll_bounds.size.w, scroll_bounds.size.h));
-    text_layer_set_text_alignment(s_joke_text_layer, GTextAlignmentLeft);
+    int16_t top_margin = PBL_IF_ROUND_ELSE(18, 0);
+    s_joke_text_layer = text_layer_create(GRect(0, top_margin, scroll_bounds.size.w, scroll_bounds.size.h));
+
+    text_layer_set_text_alignment(s_joke_text_layer, PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft));
     text_layer_set_overflow_mode(s_joke_text_layer, GTextOverflowModeWordWrap);
 
     scroll_layer_add_child(s_scroll_layer, text_layer_get_layer(s_joke_text_layer));
     layer_add_child(window_get_root_layer(window), scroll_layer_get_layer(s_scroll_layer));
 
-    s_prompt_text_layer = text_layer_create(GRect(0, full_bounds.size.h - 22, full_bounds.size.w - 5, 22));
-    text_layer_set_text(s_prompt_text_layer, "Next ->");
+    if (PBL_IF_ROUND_ELSE(true, false)) {
+        text_layer_enable_screen_text_flow_and_paging(s_joke_text_layer, 12);
+    }
+
+    // Swapped location to the middle-right using FONT_KEY_GOTHIC_14[cite: 2]
+    s_prompt_text_layer = text_layer_create(GRect(full_bounds.size.w - PBL_IF_ROUND_ELSE(35, 30), (full_bounds.size.h / 2) - 10, PBL_IF_ROUND_ELSE(30, 28), 20));
+    text_layer_set_text(s_prompt_text_layer, "next");
     text_layer_set_text_alignment(s_prompt_text_layer, GTextAlignmentRight);
-    text_layer_set_font(s_prompt_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+    text_layer_set_font(s_prompt_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
     layer_add_child(window_get_root_layer(window), text_layer_get_layer(s_prompt_text_layer));
 
-    s_up_arrow_layer = layer_create(GRect(full_bounds.size.w - 20, 5, 20, 40));
+    s_up_arrow_layer = layer_create(PBL_IF_ROUND_ELSE(
+        GRect(0, 0, full_bounds.size.w, 15),
+                                                      GRect(full_bounds.size.w - 20, 0, 20, 20)
+    ));
     layer_add_child(window_get_root_layer(window), s_up_arrow_layer);
 
-    s_down_arrow_layer = layer_create(GRect(full_bounds.size.w - 20, (full_bounds.size.h / 2) - 20, 20, 40));
+    // Repositioned the down arrow layer explicitly to the bottom
+    s_down_arrow_layer = layer_create(PBL_IF_ROUND_ELSE(
+        GRect(0, full_bounds.size.h - 15, full_bounds.size.w, 15),
+                                                        GRect(full_bounds.size.w - 20, full_bounds.size.h - 20, 20, 20)
+    ));
     layer_add_child(window_get_root_layer(window), s_down_arrow_layer);
-
-    ContentIndicator *indicator = scroll_layer_get_content_indicator(s_scroll_layer);
-
-    ContentIndicatorConfig up_config = (ContentIndicatorConfig) {
-        .layer = s_up_arrow_layer,
-        .times_out = false,
-        .alignment = GAlignCenter,
-        .colors = {
-            .foreground = GColorBlack,
-            .background = GColorClear
-        }
-    };
-    content_indicator_configure_direction(indicator, ContentIndicatorDirectionUp, &up_config);
-
-    ContentIndicatorConfig down_config = (ContentIndicatorConfig) {
-        .layer = s_down_arrow_layer,
-        .times_out = false,
-        .alignment = GAlignCenter,
-        .colors = {
-            .foreground = GColorBlack,
-            .background = GColorClear
-        }
-    };
-    content_indicator_configure_direction(indicator, ContentIndicatorDirectionDown, &down_config);
 
     if (touch_service_is_enabled()) {
         touch_service_subscribe(touch_handler, NULL);
     }
+
+    update_ui_colors();
 
     if (launch_reason() == APP_LAUNCH_WAKEUP) {
         WakeupId id = 0;
@@ -667,6 +935,10 @@ static void main_window_unload(Window *window) {
         app_timer_cancel(s_timeout_timer);
         s_timeout_timer = NULL;
     }
+    if (s_deferred_joke_timer) {
+        app_timer_cancel(s_deferred_joke_timer);
+        s_deferred_joke_timer = NULL;
+    }
     text_layer_destroy(s_joke_text_layer);
     text_layer_destroy(s_prompt_text_layer);
     layer_destroy(s_up_arrow_layer);
@@ -677,6 +949,8 @@ static void main_window_unload(Window *window) {
 // --- App Lifecycle ---
 
 static void init(void) {
+    srand(time(NULL));
+
     if (persist_exists(PERSIST_KEY_CONFIG)) {
         if (persist_get_size(PERSIST_KEY_CONFIG) == sizeof(AppConfig)) {
             persist_read_data(PERSIST_KEY_CONFIG, &s_config, sizeof(AppConfig));
@@ -686,11 +960,18 @@ static void init(void) {
         }
     }
 
-    load_jokes_from_resource();
+    load_builtin_jokes_from_resource();
 
-    if (s_num_jokes > 0) {
-        s_joke_order = malloc(s_num_jokes * sizeof(uint16_t));
+    uint16_t total_jokes = 0;
+    if (s_config.joke_mode == 0) {
+        total_jokes = s_num_builtin_jokes;
+    } else if (s_config.joke_mode == 1) {
+        total_jokes = s_num_builtin_jokes + s_config.custom_joke_count;
+    } else if (s_config.joke_mode == 2) {
+        total_jokes = s_config.custom_joke_count;
+    }
 
+    if (total_jokes > 0) {
         if (persist_exists(PERSIST_KEY_SEED) && persist_exists(PERSIST_KEY_INDEX)) {
             s_shuffle_seed = persist_read_int(PERSIST_KEY_SEED);
             s_current_index = persist_read_int(PERSIST_KEY_INDEX);
@@ -701,15 +982,14 @@ static void init(void) {
             persist_write_int(PERSIST_KEY_INDEX, s_current_index);
         }
 
-        if (s_current_index >= s_num_jokes) {
-            s_current_index = 0;
-        }
-
         shuffle_jokes();
     }
 
     app_message_register_inbox_received(inbox_received_handler);
-    app_message_open(256, 256);
+    app_message_register_outbox_sent(outbox_sent_handler);
+    app_message_register_outbox_failed(outbox_failed_handler);
+
+    app_message_open(1024, 512);
 
     wakeup_service_subscribe(wakeup_handler);
     accel_tap_service_subscribe(tap_handler);

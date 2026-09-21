@@ -10,6 +10,12 @@ function getCustomJokesArray(rawString) {
   return rawString.split('|').map(function(j) { return j.trim(); }).filter(function(j) { return j.length > 0; });
 }
 
+function getInt(val, fallback) {
+  if (val === undefined || val === null) return fallback;
+  var parsed = parseInt(val);
+  return isNaN(parsed) ? fallback : parsed;
+}
+
 Pebble.addEventListener('ready', function(e) {
   var customText = localStorage.getItem('CustomJokesText') || "";
   var jokesArray = getCustomJokesArray(customText);
@@ -59,26 +65,29 @@ Pebble.addEventListener('webviewclosed', function(e) {
 
     var jokeMode = dict.CustomJokeMode !== undefined ? dict.CustomJokeMode : (localStorage.getItem('CustomJokeMode') || "0");
     var jokesText = dict.CustomJokesText !== undefined ? dict.CustomJokesText : (localStorage.getItem('CustomJokesText') || "");
+    var darkMode = dict.DarkMode !== undefined ? dict.DarkMode : (localStorage.getItem('DarkMode') || "0");
     var jokesArray = getCustomJokesArray(jokesText);
 
     localStorage.setItem('CustomJokeMode', jokeMode.toString());
     localStorage.setItem('CustomJokesText', jokesText);
+    localStorage.setItem('DarkMode', darkMode.toString());
     localStorage.setItem('clay-settings', JSON.stringify(dict));
 
     var safePayload = {
-      'ScheduleMode': parseInt(dict.ScheduleMode || 0),
-                        'SpecificHour': parseInt(dict.SpecificHour || 12),
-                        'SpecificMinute': parseInt(dict.SpecificMinute || 0),
-                        'WindowStartHour': parseInt(dict.WindowStartHour || 9),
-                        'WindowEndHour': parseInt(dict.WindowEndHour || 17),
-                        'JokesPerHour': parseInt(dict.JokesPerHour || 1),
-                        'TimeoutSec': parseInt(dict.TimeoutSec || 30),
-                        'AlertStyle': parseInt(dict.AlertStyle || 0),
-                        'SoundTune': parseInt(dict.SoundTune || 0),
-                        'AlertVolume': parseInt(dict.AlertVolume || 100),
-                        'FontSize': parseInt(dict.FontSize || 2),
-                        'CustomJokeMode': parseInt(jokeMode),
-                        'CustomJokeCount': jokesArray.length
+      'ScheduleMode': getInt(dict.ScheduleMode, 0),
+                        'SpecificHour': getInt(dict.SpecificHour, 12),
+                        'SpecificMinute': getInt(dict.SpecificMinute, 0),
+                        'WindowStartHour': getInt(dict.WindowStartHour, 9),
+                        'WindowEndHour': getInt(dict.WindowEndHour, 17),
+                        'JokesPerHour': getInt(dict.JokesPerHour, 1),
+                        'TimeoutSec': getInt(dict.TimeoutSec, 30),
+                        'AlertStyle': getInt(dict.AlertStyle, 0),
+                        'SoundTune': getInt(dict.SoundTune, 0),
+                        'AlertVolume': getInt(dict.AlertVolume, 100),
+                        'FontSize': getInt(dict.FontSize, 2),
+                        'CustomJokeMode': getInt(jokeMode, 0),
+                        'CustomJokeCount': jokesArray.length,
+                        'DarkMode': (darkMode === true || darkMode === "1" || darkMode === 1) ? 1 : 0
     };
 
     Pebble.sendAppMessage(safePayload);

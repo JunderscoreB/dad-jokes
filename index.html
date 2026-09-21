@@ -122,14 +122,14 @@
     <div class="setting">
       <label for="CustomJokeMode">Joke Roster Mode</label>
       <select id="CustomJokeMode">
-        <option value="0">Use Built-In Only</option>
+        <option value="0" selected>Use Built-In Only</option>
         <option value="1">Mix Built-In & Custom</option>
         <option value="2">Custom Only (Override)</option>
       </select>
     </div>
     <div class="setting" id="CustomJokesGroup">
       <label for="CustomJokesText">Custom Joke List (One per line)</label>
-      <textarea id="CustomJokesText" rows="6" placeholder="// PASTE YOUR JOKES HERE. ONE JOKE PER LINE."></textarea>
+      <textarea id="CustomJokesText" rows="6" placeholder="Enter your custom jokes here..."></textarea>
       <button type="button" class="secondary-btn" onclick="clearJokes()">Clear Custom Jokes</button>
     </div>
 
@@ -158,6 +158,15 @@
         <label for="AlertVolume">Speaker Volume (%)</label>
         <input type="range" id="AlertVolume" min="0" max="100" value="100">
       </div>
+    </div>
+
+    <!-- Appearance Configuration -->
+    <div class="setting">
+      <label for="DarkMode">Dark Mode</label>
+      <select id="DarkMode">
+        <option value="0" selected>Off (Light Theme)</option>
+        <option value="1">On (Dark Theme)</option>
+      </select>
     </div>
 
     <div class="setting">
@@ -227,12 +236,15 @@
           var fields = [
             'ScheduleMode', 'SpecificHour', 'SpecificMinute', 'WindowStartHour',
             'WindowEndHour', 'JokesPerHour', 'TimeoutSec', 'CustomJokeMode',
-            'AlertStyle', 'SoundTune', 'AlertVolume', 'FontSize'
+            'AlertStyle', 'SoundTune', 'AlertVolume', 'FontSize', 'DarkMode'
           ];
           for (var i = 0; i < fields.length; i++) {
             var f = fields[i];
             if (config[f] !== undefined && document.getElementById(f)) {
-              document.getElementById(f).value = config[f];
+              var val = config[f];
+              if (val === true) val = "1";
+              if (val === false) val = "0";
+              document.getElementById(f).value = val;
             }
           }
           if (config.CustomJokesText !== undefined) {
@@ -259,10 +271,10 @@
         'FontSize': parseInt(document.getElementById('FontSize').value),
         'CustomJokeMode': parseInt(document.getElementById('CustomJokeMode').value),
         'CustomJokesText': document.getElementById('CustomJokesText').value.replace(/\n/g, '|'),
-        'TimeoutSec': parseInt(document.getElementById('TimeoutSec').value)
+        'TimeoutSec': parseInt(document.getElementById('TimeoutSec').value),
+        'DarkMode': parseInt(document.getElementById('DarkMode').value)
       };
 
-      // Ensure the return_to URL correctly targets the emulator's webview listener
       var return_to = getQueryParam('return_to');
       if (!return_to) {
         return_to = 'pebblejs://close#';

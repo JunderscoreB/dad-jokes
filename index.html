@@ -18,7 +18,7 @@
 <body>
   <div class="container">
     <h2>Dad Jokes Settings</h2>
-
+    
     <div class="setting">
       <label for="ScheduleMode">Delivery Mode</label>
       <select id="ScheduleMode" onchange="toggleSettings()">
@@ -106,6 +106,30 @@
       </div>
     </div>
 
+    <!-- Custom Jokes Section -->
+    <div class="setting">
+      <label for="CustomJokeMode">Joke Roster Mode</label>
+      <select id="CustomJokeMode">
+        <option value="0">Use Built-In Only</option>
+        <option value="1">Mix Built-In & Custom</option>
+        <option value="2">Custom Only (Override)</option>
+      </select>
+    </div>
+    <div class="setting" id="CustomJokesGroup">
+      <label for="CustomJokesText">Custom Joke List (One per line)</label>
+      <textarea id="CustomJokesText" rows="6" placeholder="Enter your custom jokes here..."></textarea>
+      <button type="button" class="secondary-btn" onclick="clearJokes()">Clear Custom Jokes</button>
+    </div>
+
+    <!-- Behavior Configuration -->
+    <div class="setting">
+      <label for="FlickToDismiss">Wrist-Flick to Dismiss</label>
+      <select id="FlickToDismiss">
+        <option value="1" selected>Enabled</option>
+        <option value="0">Disabled</option>
+      </select>
+    </div>
+
     <div class="setting">
       <label for="TimeoutSec">App Timeout (Seconds)</label>
       <select id="TimeoutSec">
@@ -116,21 +140,6 @@
         <option value="120">120 Seconds</option>
       </select>
       <div class="hint">How long before the app closes automatically.</div>
-    </div>
-
-    <!-- Custom Jokes Section -->
-    <div class="setting">
-      <label for="CustomJokeMode">Joke Roster Mode</label>
-      <select id="CustomJokeMode">
-        <option value="0" selected>Use Built-In Only</option>
-        <option value="1">Mix Built-In & Custom</option>
-        <option value="2">Custom Only (Override)</option>
-      </select>
-    </div>
-    <div class="setting" id="CustomJokesGroup">
-      <label for="CustomJokesText">Custom Joke List (One per line)</label>
-      <textarea id="CustomJokesText" rows="6" placeholder="Enter your custom jokes here..."></textarea>
-      <button type="button" class="secondary-btn" onclick="clearJokes()">Clear Custom Jokes</button>
     </div>
 
     <!-- Alert Configuration -->
@@ -168,7 +177,7 @@
         <option value="1">On (Dark Theme)</option>
       </select>
     </div>
-
+    
     <div class="setting">
       <label for="FontSize">Font Size</label>
       <select id="FontSize">
@@ -234,9 +243,9 @@
         try {
           var config = JSON.parse(configStr);
           var fields = [
-            'ScheduleMode', 'SpecificHour', 'SpecificMinute', 'WindowStartHour',
-            'WindowEndHour', 'JokesPerHour', 'TimeoutSec', 'CustomJokeMode',
-            'AlertStyle', 'SoundTune', 'AlertVolume', 'FontSize', 'DarkMode'
+            'ScheduleMode', 'SpecificHour', 'SpecificMinute', 'WindowStartHour', 
+            'WindowEndHour', 'JokesPerHour', 'TimeoutSec', 'CustomJokeMode', 
+            'AlertStyle', 'SoundTune', 'AlertVolume', 'FontSize', 'DarkMode', 'FlickToDismiss'
           ];
           for (var i = 0; i < fields.length; i++) {
             var f = fields[i];
@@ -272,14 +281,15 @@
         'CustomJokeMode': parseInt(document.getElementById('CustomJokeMode').value),
         'CustomJokesText': document.getElementById('CustomJokesText').value.replace(/\n/g, '|'),
         'TimeoutSec': parseInt(document.getElementById('TimeoutSec').value),
-        'DarkMode': parseInt(document.getElementById('DarkMode').value)
+        'DarkMode': parseInt(document.getElementById('DarkMode').value),
+        'FlickToDismiss': parseInt(document.getElementById('FlickToDismiss').value)
       };
 
       var return_to = getQueryParam('return_to');
       if (!return_to) {
         return_to = 'pebblejs://close#';
       }
-
+      
       document.location = return_to + encodeURIComponent(JSON.stringify(options));
     });
   </script>

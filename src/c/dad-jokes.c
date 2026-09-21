@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: MIT */
 #include <pebble.h>
 
 #define PERSIST_KEY_SEED   1
@@ -42,6 +42,7 @@ typedef struct {
     int32_t joke_mode; // 0 = Built-In, 1 = Mixed, 2 = Custom Only
     int32_t custom_joke_count;
     int32_t dark_mode; // 0 = Light, 1 = Dark
+    int32_t flick_to_dismiss; // 0 = Disabled, 1 = Enabled
 } AppConfig;
 
 static AppConfig s_config = {
@@ -58,7 +59,8 @@ static AppConfig s_config = {
     .font_size = 2,
     .joke_mode = 0,
     .custom_joke_count = 0,
-    .dark_mode = 0
+    .dark_mode = 0,
+    .flick_to_dismiss = 1 // Enabled by default
 };
 
 // Forward declaration
@@ -100,7 +102,7 @@ static void update_ui_colors(void) {
     ContentIndicatorConfig up_config = (ContentIndicatorConfig) {
         .layer = s_up_arrow_layer,
         .times_out = false,
-        .alignment = GAlignCenter,
+        .alignment = PBL_IF_ROUND_ELSE(GAlignTop, GAlignCenter),
         .colors = {
             .foreground = indicator_fg,
             .background = indicator_bg
@@ -111,7 +113,7 @@ static void update_ui_colors(void) {
     ContentIndicatorConfig down_config = (ContentIndicatorConfig) {
         .layer = s_down_arrow_layer,
         .times_out = false,
-        .alignment = GAlignCenter,
+        .alignment = PBL_IF_ROUND_ELSE(GAlignBottom, GAlignCenter),
         .colors = {
             .foreground = indicator_fg,
             .background = indicator_bg
@@ -251,7 +253,10 @@ static void write_silence_to_speaker(uint16_t duration_ms) {
     }
 }
 
-// --- Text Parsing Engine (Aplite Safe Streaming) ---
+// --- Text Parsing Engine (One Joke Per Line Format) ---
+// This parser correctly interprets jokes.txt files where each joke
+// occupies a single line. Blank lines are NOT required.
+// Internal line breaks for multi-line jokes are encoded as literal '\n' characters.
 
 static void load_builtin_jokes_from_resource(void) {
     ResHandle handle = resource_get_handle(RESOURCE_ID_JOKES_TXT);
@@ -473,20 +478,18 @@ static void shuffle_jokes(void) {
 static void display_joke(const char *joke_text) {
     GFont font = get_font_for_preference(s_config.font_size);
     text_layer_set_font(s_joke_text_layer, font);
+
     text_layer_set_text(s_joke_text_layer, joke_text);
 
     GRect full_bounds = layer_get_bounds(window_get_root_layer(s_main_window));
     int16_t text_width = PBL_IF_ROUND_ELSE(full_bounds.size.w, full_bounds.size.w - 20);
-    int16_t visible_height = full_bounds.size.h; // Giving scroll layer access to full display height
+    int16_t visible_height = full_bounds.size.h;
 
-    // Temporarily expand height for measurement
     text_layer_set_size(s_joke_text_layer, GSize(text_width, 4000));
     GSize content_size = text_layer_get_content_size(s_joke_text_layer);
 
     int16_t top_margin = PBL_IF_ROUND_ELSE(18, 0);
-    // Explicit padding added directly to the layer height. This extends the scroll layer's
-    // scrollable envelope past the bounding box of the text, dodging the round bezel.
-    int16_t bottom_margin = PBL_IF_ROUND_ELSE(50, 20);
+    int16_t bottom_margin = 40;
 
     text_layer_set_size(s_joke_text_layer, GSize(text_width, content_size.h + bottom_margin));
 
@@ -510,9 +513,14 @@ static void load_builtin_joke(void) {
     ResHandle handle = resource_get_handle(RESOURCE_ID_JOKES_TXT);
     size_t res_size = resource_size(handle);
 
+    size_t max_allowed = sizeof(s_current_joke_buffer) - 1;
+    if (PBL_IF_ROUND_ELSE(true, false)) {
+        max_allowed -= 2;
+    }
+
     size_t read_size = res_size - start_offset;
-    if (read_size > sizeof(s_current_joke_buffer) - 1) {
-        read_size = sizeof(s_current_joke_buffer) - 1;
+    if (read_size > max_allowed) {
+        read_size = max_allowed;
     }
 
     resource_load_byte_range(handle, start_offset, (uint8_t*)s_current_joke_buffer, read_size);
@@ -534,6 +542,11 @@ static void load_builtin_joke(void) {
         } else {
             *write_ptr++ = *read_ptr++;
         }
+    }
+
+    if (PBL_IF_ROUND_ELSE(true, false)) {
+        *write_ptr++ = '\n';
+        *write_ptr++ = '\n';
     }
     *write_ptr = '\0';
 
@@ -696,8 +709,6 @@ static void next_joke_handler(ClickRecognizerRef recognizer, void *context) {
 }
 
 static void click_config_provider(void *context) {
-    // Reassigned BUTTON_ID_SELECT to handle our next joke action[cite: 2]
-    // Reassigned BUTTON_ID_DOWN to scroll down[cite: 2]
     window_single_click_subscribe(BUTTON_ID_BACK, button_dismiss_handler);
     window_single_click_subscribe(BUTTON_ID_UP, up_click_handler);
     window_single_click_subscribe(BUTTON_ID_SELECT, next_joke_handler);
@@ -705,7 +716,9 @@ static void click_config_provider(void *context) {
 }
 
 static void tap_handler(AccelAxisType axis, int32_t direction) {
-    window_stack_pop_all(true);
+    if (s_config.flick_to_dismiss) {
+        window_stack_pop_all(true);
+    }
 }
 
 static void touch_handler(const TouchEvent *event, void *context) {
@@ -752,8 +765,14 @@ static void outbox_failed_handler(DictionaryIterator *iterator, AppMessageResult
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
     Tuple *deliver_t = dict_find(iter, MESSAGE_KEY_DeliverJokeText);
     if (deliver_t) {
-        strncpy(s_current_joke_buffer, deliver_t->value->cstring, sizeof(s_current_joke_buffer) - 1);
-        s_current_joke_buffer[sizeof(s_current_joke_buffer) - 1] = '\0';
+        size_t max_len = sizeof(s_current_joke_buffer) - 1;
+
+        if (PBL_IF_ROUND_ELSE(true, false)) {
+            max_len -= 2;
+        }
+
+        strncpy(s_current_joke_buffer, deliver_t->value->cstring, max_len);
+        s_current_joke_buffer[max_len] = '\0';
 
         char *read_ptr = s_current_joke_buffer;
         char *write_ptr = s_current_joke_buffer;
@@ -764,6 +783,11 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
             } else {
                 *write_ptr++ = *read_ptr++;
             }
+        }
+
+        if (PBL_IF_ROUND_ELSE(true, false)) {
+            *write_ptr++ = '\n';
+            *write_ptr++ = '\n';
         }
         *write_ptr = '\0';
 
@@ -822,6 +846,11 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
         }
     }
 
+    Tuple *flick_t = dict_find(iter, MESSAGE_KEY_FlickToDismiss);
+    if (flick_t) {
+        s_config.flick_to_dismiss = get_int_from_tuple(flick_t);
+    }
+
     Tuple *joke_mode_t = dict_find(iter, MESSAGE_KEY_CustomJokeMode);
     if (joke_mode_t) {
         s_is_phone_ready = true;
@@ -865,7 +894,7 @@ static void main_window_load(Window *window) {
     GRect full_bounds = layer_get_bounds(window_get_root_layer(window));
 
     int16_t text_width = PBL_IF_ROUND_ELSE(full_bounds.size.w, full_bounds.size.w - 20);
-    GRect scroll_bounds = GRect(0, 0, text_width, full_bounds.size.h); // Span the entire screen height
+    GRect scroll_bounds = GRect(0, 0, text_width, full_bounds.size.h);
     s_scroll_layer = scroll_layer_create(scroll_bounds);
     scroll_layer_set_click_config_onto_window(s_scroll_layer, window);
 
@@ -887,7 +916,6 @@ static void main_window_load(Window *window) {
         text_layer_enable_screen_text_flow_and_paging(s_joke_text_layer, 12);
     }
 
-    // Swapped location to the middle-right using FONT_KEY_GOTHIC_14[cite: 2]
     s_prompt_text_layer = text_layer_create(GRect(full_bounds.size.w - PBL_IF_ROUND_ELSE(35, 30), (full_bounds.size.h / 2) - 10, PBL_IF_ROUND_ELSE(30, 28), 20));
     text_layer_set_text(s_prompt_text_layer, "next");
     text_layer_set_text_alignment(s_prompt_text_layer, GTextAlignmentRight);
@@ -900,7 +928,6 @@ static void main_window_load(Window *window) {
     ));
     layer_add_child(window_get_root_layer(window), s_up_arrow_layer);
 
-    // Repositioned the down arrow layer explicitly to the bottom
     s_down_arrow_layer = layer_create(PBL_IF_ROUND_ELSE(
         GRect(0, full_bounds.size.h - 15, full_bounds.size.w, 15),
                                                         GRect(full_bounds.size.w - 20, full_bounds.size.h - 20, 20, 20)

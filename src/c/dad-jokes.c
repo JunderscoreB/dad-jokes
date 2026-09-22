@@ -18,9 +18,10 @@ static Layer *s_down_arrow_layer;
 
 static AppTimer *s_timeout_timer = NULL;
 static AppTimer *s_deferred_joke_timer = NULL;
+static AppTimer *s_layout_timer = NULL;
 static bool s_is_phone_ready = false;
 
-static char s_current_joke_buffer[512];
+static char s_current_joke_buffer[2048];
 static uint32_t *s_joke_offsets = NULL;
 static uint16_t *s_joke_order = NULL;
 static uint16_t s_num_builtin_jokes = 0;
@@ -254,9 +255,6 @@ static void write_silence_to_speaker(uint16_t duration_ms) {
 }
 
 // --- Text Parsing Engine (One Joke Per Line Format) ---
-// This parser correctly interprets jokes.txt files where each joke
-// occupies a single line. Blank lines are NOT required.
-// Internal line breaks for multi-line jokes are encoded as literal '\n' characters.
 
 static void load_builtin_jokes_from_resource(void) {
     ResHandle handle = resource_get_handle(RESOURCE_ID_JOKES_TXT);
@@ -475,31 +473,52 @@ static void shuffle_jokes(void) {
     }
 }
 
-static void display_joke(const char *joke_text) {
-    GFont font = get_font_for_preference(s_config.font_size);
-    text_layer_set_font(s_joke_text_layer, font);
-
-    text_layer_set_text(s_joke_text_layer, joke_text);
+static void finalize_layout_cb(void *context) {
+    s_layout_timer = NULL;
 
     GRect full_bounds = layer_get_bounds(window_get_root_layer(s_main_window));
     int16_t text_width = PBL_IF_ROUND_ELSE(full_bounds.size.w, full_bounds.size.w - 20);
     int16_t visible_height = full_bounds.size.h;
-
-    text_layer_set_size(s_joke_text_layer, GSize(text_width, 4000));
-    GSize content_size = text_layer_get_content_size(s_joke_text_layer);
-
     int16_t top_margin = PBL_IF_ROUND_ELSE(18, 0);
     int16_t bottom_margin = 40;
 
-    text_layer_set_size(s_joke_text_layer, GSize(text_width, content_size.h + bottom_margin));
+    // After waiting 50ms, the OS has updated the TextLayer geometry, so it's safe to query
+    GSize content_size = text_layer_get_content_size(s_joke_text_layer);
+
+    // Shrink the TextLayer frame down to precisely wrap the finished text
+    layer_set_frame(text_layer_get_layer(s_joke_text_layer), GRect(0, top_margin, text_width, content_size.h + bottom_margin));
 
     int16_t total_scroll_height = top_margin + content_size.h + bottom_margin;
     if (total_scroll_height < visible_height) {
         total_scroll_height = visible_height;
     }
 
+    // Apply the boundaries to the scroll layer so scrolling functions properly
     scroll_layer_set_content_size(s_scroll_layer, GSize(text_width, total_scroll_height));
     scroll_layer_set_content_offset(s_scroll_layer, GPointZero, false);
+}
+
+static void display_joke(const char *joke_text) {
+    GRect full_bounds = layer_get_bounds(window_get_root_layer(s_main_window));
+    int16_t text_width = PBL_IF_ROUND_ELSE(full_bounds.size.w, full_bounds.size.w - 20);
+    int16_t top_margin = PBL_IF_ROUND_ELSE(18, 0);
+
+    // 1. Give the layer an infinite bounding box so geometry math isn't clipped
+    layer_set_frame(text_layer_get_layer(s_joke_text_layer), GRect(0, top_margin, text_width, 10000));
+
+    // 2. Clear pointer cache by injecting an empty space. This forces layout engine to dirty the layer.
+    text_layer_set_text(s_joke_text_layer, " ");
+
+    // 3. Set the real font and pointer
+    GFont font = get_font_for_preference(s_config.font_size);
+    text_layer_set_font(s_joke_text_layer, font);
+    text_layer_set_text(s_joke_text_layer, joke_text);
+
+    // 4. We cannot query the height yet. We must allow the Pebble Event Loop to run and process the new geometry.
+    if (s_layout_timer) {
+        app_timer_cancel(s_layout_timer);
+    }
+    s_layout_timer = app_timer_register(50, finalize_layout_cb, NULL);
 }
 
 static void load_builtin_joke(void) {
@@ -966,6 +985,10 @@ static void main_window_unload(Window *window) {
         app_timer_cancel(s_deferred_joke_timer);
         s_deferred_joke_timer = NULL;
     }
+    if (s_layout_timer) {
+        app_timer_cancel(s_layout_timer);
+        s_layout_timer = NULL;
+    }
     text_layer_destroy(s_joke_text_layer);
     text_layer_destroy(s_prompt_text_layer);
     layer_destroy(s_up_arrow_layer);
@@ -1016,7 +1039,7 @@ static void init(void) {
     app_message_register_outbox_sent(outbox_sent_handler);
     app_message_register_outbox_failed(outbox_failed_handler);
 
-    app_message_open(1024, 512);
+    app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
 
     wakeup_service_subscribe(wakeup_handler);
     accel_tap_service_subscribe(tap_handler);

@@ -10,17 +10,19 @@
 
 static Window *s_main_window;
 static ScrollLayer *s_scroll_layer;
-static TextLayer *s_joke_text_layer;
-static TextLayer *s_prompt_text_layer;
 
+// Using a custom graphics Layer to bypass Pebble's native TextLayer layout bugs
+static Layer *s_joke_layer;
+
+static TextLayer *s_prompt_text_layer;
 static Layer *s_up_arrow_layer;
 static Layer *s_down_arrow_layer;
 
 static AppTimer *s_timeout_timer = NULL;
 static AppTimer *s_deferred_joke_timer = NULL;
-static AppTimer *s_layout_timer = NULL;
 static bool s_is_phone_ready = false;
 
+// Expanded buffer to safely accommodate massive custom jokes
 static char s_current_joke_buffer[2048];
 static uint32_t *s_joke_offsets = NULL;
 static uint16_t *s_joke_order = NULL;
@@ -64,12 +66,13 @@ static AppConfig s_config = {
     .flick_to_dismiss = 1 // Enabled by default
 };
 
-// Forward declaration
+// Forward declarations
 static void load_builtin_joke(void);
 static void load_current_joke(void);
 static void next_joke(void);
 static void schedule_next_joke(void);
 static void display_joke(const char *joke_text);
+static GFont get_font_for_preference(int32_t font_pref);
 
 // --- Theme Application ---
 
@@ -79,13 +82,11 @@ static void update_ui_colors(void) {
 
     window_set_background_color(s_main_window, bg_color);
 
-    text_layer_set_background_color(s_joke_text_layer, GColorClear);
     text_layer_set_background_color(s_prompt_text_layer, GColorClear);
-
-    text_layer_set_text_color(s_joke_text_layer, fg_color);
     text_layer_set_text_color(s_prompt_text_layer, fg_color);
 
-    scroll_layer_set_shadow_hidden(s_scroll_layer, s_config.dark_mode != 0);
+    // Permanently disable the scroll layer drop shadow to prevent text dithering/clipping
+    scroll_layer_set_shadow_hidden(s_scroll_layer, true);
 
     ContentIndicator *indicator = scroll_layer_get_content_indicator(s_scroll_layer);
 
@@ -121,6 +122,26 @@ static void update_ui_colors(void) {
         }
     };
     content_indicator_configure_direction(indicator, ContentIndicatorDirectionDown, &down_config);
+    
+    if (s_joke_layer) {
+        layer_mark_dirty(s_joke_layer);
+    }
+}
+
+// --- Custom Graphics Renderer ---
+
+static void joke_layer_update_proc(Layer *layer, GContext *ctx) {
+    GColor fg_color = s_config.dark_mode ? GColorWhite : GColorBlack;
+    graphics_context_set_text_color(ctx, fg_color);
+    
+    GRect bounds = layer_get_bounds(layer);
+    GFont font = get_font_for_preference(s_config.font_size);
+    
+    // Draw the text using the raw bounds, completely free of text_attributes limitations
+    graphics_draw_text(ctx, s_current_joke_buffer, font, bounds,
+                       GTextOverflowModeWordWrap,
+                       PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft),
+                       NULL);
 }
 
 // --- Timeout Engine ---
@@ -252,6 +273,53 @@ static void write_silence_to_speaker(uint16_t duration_ms) {
             psleep(10);
         }
     }
+}
+
+// --- Text Sanitization Engine ---
+
+static void format_and_sanitize_text(char *buffer) {
+    char *read_ptr = buffer;
+    char *write_ptr = buffer;
+    
+    while (*read_ptr) {
+        // Un-escape literal '\n' strings
+        if (*read_ptr == '\\' && *(read_ptr + 1) == 'n') {
+            *write_ptr++ = '\n';
+            read_ptr += 2;
+        } 
+        // Intercept UTF-8 sequence starting with E2 80
+        else if ((unsigned char)read_ptr[0] == 0xE2 && (unsigned char)read_ptr[1] == 0x80) {
+            unsigned char byte3 = (unsigned char)read_ptr[2];
+            
+            if (byte3 == 0x98 || byte3 == 0x99) { 
+                // Convert Smart Single Quotes (‘ or ’) to standard ASCII apostrophe
+                *write_ptr++ = '\'';
+                read_ptr += 3;
+            } else if (byte3 == 0x9C || byte3 == 0x9D) { 
+                // Convert Smart Double Quotes (“ or ”) to standard ASCII quotes
+                *write_ptr++ = '"';
+                read_ptr += 3;
+            } else if (byte3 == 0xA6) { 
+                // Convert single-character UTF-8 Ellipsis (…) to three ASCII periods
+                *write_ptr++ = '.';
+                *write_ptr++ = '.';
+                *write_ptr++ = '.';
+                read_ptr += 3;
+            } else {
+                *write_ptr++ = *read_ptr++;
+            }
+        } 
+        // Standard copy
+        else {
+            *write_ptr++ = *read_ptr++;
+        }
+    }
+    
+    // Strip trailing whitespaces/newlines so we don't accidentally stack layout gaps
+    while (write_ptr > buffer && (*(write_ptr - 1) == '\n' || *(write_ptr - 1) == '\r' || *(write_ptr - 1) == ' ')) {
+        write_ptr--;
+    }
+    *write_ptr = '\0';
 }
 
 // --- Text Parsing Engine (One Joke Per Line Format) ---
@@ -473,101 +541,90 @@ static void shuffle_jokes(void) {
     }
 }
 
-static void finalize_layout_cb(void *context) {
-    s_layout_timer = NULL;
-
-    GRect full_bounds = layer_get_bounds(window_get_root_layer(s_main_window));
-    int16_t text_width = PBL_IF_ROUND_ELSE(full_bounds.size.w, full_bounds.size.w - 20);
-    int16_t visible_height = full_bounds.size.h;
-    int16_t top_margin = PBL_IF_ROUND_ELSE(18, 0);
-    int16_t bottom_margin = 40;
-
-    // After waiting 50ms, the OS has updated the TextLayer geometry, so it's safe to query
-    GSize content_size = text_layer_get_content_size(s_joke_text_layer);
-
-    // Shrink the TextLayer frame down to precisely wrap the finished text
-    layer_set_frame(text_layer_get_layer(s_joke_text_layer), GRect(0, top_margin, text_width, content_size.h + bottom_margin));
-
-    int16_t total_scroll_height = top_margin + content_size.h + bottom_margin;
-    if (total_scroll_height < visible_height) {
-        total_scroll_height = visible_height;
-    }
-
-    // Apply the boundaries to the scroll layer so scrolling functions properly
-    scroll_layer_set_content_size(s_scroll_layer, GSize(text_width, total_scroll_height));
-    scroll_layer_set_content_offset(s_scroll_layer, GPointZero, false);
-}
-
 static void display_joke(const char *joke_text) {
-    GRect full_bounds = layer_get_bounds(window_get_root_layer(s_main_window));
-    int16_t text_width = PBL_IF_ROUND_ELSE(full_bounds.size.w, full_bounds.size.w - 20);
-    int16_t top_margin = PBL_IF_ROUND_ELSE(18, 0);
+    bool is_gabbro = PBL_PLATFORM_SWITCH(PBL_PLATFORM_TYPE_CURRENT, false, false, false, false, false, false, true);
+    uint8_t buffer_offset = is_gabbro ? 1 : 0;
 
-    // 1. Give the layer an infinite bounding box so geometry math isn't clipped
-    layer_set_frame(text_layer_get_layer(s_joke_text_layer), GRect(0, top_margin, text_width, 10000));
-
-    // 2. Clear pointer cache by injecting an empty space. This forces layout engine to dirty the layer.
-    text_layer_set_text(s_joke_text_layer, " ");
-
-    // 3. Set the real font and pointer
-    GFont font = get_font_for_preference(s_config.font_size);
-    text_layer_set_font(s_joke_text_layer, font);
-    text_layer_set_text(s_joke_text_layer, joke_text);
-
-    // 4. We cannot query the height yet. We must allow the Pebble Event Loop to run and process the new geometry.
-    if (s_layout_timer) {
-        app_timer_cancel(s_layout_timer);
+    // Check if the system is passing us a literal status string. 
+    // If so, safely copy it into the global buffer with a 1-byte offset so we can inject a \n on Gabbro
+    if (joke_text != s_current_joke_buffer) {
+        strncpy(s_current_joke_buffer + buffer_offset, joke_text, sizeof(s_current_joke_buffer) - 1 - buffer_offset);
+        s_current_joke_buffer[sizeof(s_current_joke_buffer) - 1] = '\0';
+        
+        format_and_sanitize_text(s_current_joke_buffer + buffer_offset);
+        
+        if (is_gabbro) {
+            s_current_joke_buffer[0] = '\n';
+        }
     }
-    s_layout_timer = app_timer_register(50, finalize_layout_cb, NULL);
+
+    GFont font = get_font_for_preference(s_config.font_size);
+    GRect full_bounds = layer_get_bounds(window_get_root_layer(s_main_window));
+    
+    int16_t horizontal_margin = PBL_IF_ROUND_ELSE(16, 10);
+    int16_t text_width = full_bounds.size.w - (horizontal_margin * 2);
+
+    GSize content_size = graphics_text_layout_get_content_size(
+        s_current_joke_buffer, font, GRect(0, 0, text_width, 10000), 
+        GTextOverflowModeWordWrap, 
+        PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft));
+
+    int16_t top_margin = PBL_IF_ROUND_ELSE(20, 5);
+    int16_t bottom_margin = PBL_IF_ROUND_ELSE(40, 24);
+    int16_t text_layer_height = content_size.h + 10;
+
+    layer_set_frame(s_joke_layer, GRect(horizontal_margin, top_margin, text_width, text_layer_height));
+
+    int16_t total_scroll_height = top_margin + text_layer_height + bottom_margin;
+    if (total_scroll_height < full_bounds.size.h) {
+        total_scroll_height = full_bounds.size.h;
+    }
+
+    scroll_layer_set_content_size(s_scroll_layer, GSize(full_bounds.size.w, total_scroll_height));
+    scroll_layer_set_content_offset(s_scroll_layer, GPointZero, false);
+    
+    layer_mark_dirty(s_joke_layer);
 }
 
 static void load_builtin_joke(void) {
     if (s_num_builtin_jokes == 0 || !s_joke_offsets) return;
 
     uint16_t joke_id = s_joke_order[s_current_index];
-
     joke_id = joke_id % s_num_builtin_jokes;
 
     uint32_t start_offset = s_joke_offsets[joke_id];
     ResHandle handle = resource_get_handle(RESOURCE_ID_JOKES_TXT);
     size_t res_size = resource_size(handle);
 
-    size_t max_allowed = sizeof(s_current_joke_buffer) - 1;
-    if (PBL_IF_ROUND_ELSE(true, false)) {
-        max_allowed -= 2;
-    }
+    // Use a 1-byte offset internally if the firmware detects the Gabbro platform
+    bool is_gabbro = PBL_PLATFORM_SWITCH(PBL_PLATFORM_TYPE_CURRENT, false, false, false, false, false, false, true);
+    uint8_t buffer_offset = is_gabbro ? 1 : 0;
+
+    size_t max_allowed = sizeof(s_current_joke_buffer) - 1 - buffer_offset;
 
     size_t read_size = res_size - start_offset;
     if (read_size > max_allowed) {
         read_size = max_allowed;
     }
 
-    resource_load_byte_range(handle, start_offset, (uint8_t*)s_current_joke_buffer, read_size);
+    // Safely load into the buffer utilizing the required offset
+    resource_load_byte_range(handle, start_offset, (uint8_t*)s_current_joke_buffer + buffer_offset, read_size);
 
     for (size_t i = 0; i < read_size; i++) {
-        if (s_current_joke_buffer[i] == '\r' || s_current_joke_buffer[i] == '\n') {
-            s_current_joke_buffer[i] = '\0';
+        if (s_current_joke_buffer[i + buffer_offset] == '\r' || s_current_joke_buffer[i + buffer_offset] == '\n') {
+            s_current_joke_buffer[i + buffer_offset] = '\0';
             break;
         }
     }
-    s_current_joke_buffer[read_size] = '\0';
+    s_current_joke_buffer[read_size + buffer_offset] = '\0';
 
-    char *read_ptr = s_current_joke_buffer;
-    char *write_ptr = s_current_joke_buffer;
-    while (*read_ptr) {
-        if (*read_ptr == '\\' && *(read_ptr + 1) == 'n') {
-            *write_ptr++ = '\n';
-            read_ptr += 2;
-        } else {
-            *write_ptr++ = *read_ptr++;
-        }
-    }
+    // Pass the text to the sanitization engine to catch UTF-8 anomalies
+    format_and_sanitize_text(s_current_joke_buffer + buffer_offset);
 
-    if (PBL_IF_ROUND_ELSE(true, false)) {
-        *write_ptr++ = '\n';
-        *write_ptr++ = '\n';
+    // Inject the \n at the very top of the buffer index for Gabbro devices
+    if (is_gabbro) {
+        s_current_joke_buffer[0] = '\n';
     }
-    *write_ptr = '\0';
 
     display_joke(s_current_joke_buffer);
 }
@@ -784,31 +841,19 @@ static void outbox_failed_handler(DictionaryIterator *iterator, AppMessageResult
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
     Tuple *deliver_t = dict_find(iter, MESSAGE_KEY_DeliverJokeText);
     if (deliver_t) {
-        size_t max_len = sizeof(s_current_joke_buffer) - 1;
+        bool is_gabbro = PBL_PLATFORM_SWITCH(PBL_PLATFORM_TYPE_CURRENT, false, false, false, false, false, false, true);
+        uint8_t buffer_offset = is_gabbro ? 1 : 0;
+        
+        size_t max_len = sizeof(s_current_joke_buffer) - 1 - buffer_offset;
+        
+        strncpy(s_current_joke_buffer + buffer_offset, deliver_t->value->cstring, max_len);
+        s_current_joke_buffer[max_len + buffer_offset] = '\0';
 
-        if (PBL_IF_ROUND_ELSE(true, false)) {
-            max_len -= 2;
+        format_and_sanitize_text(s_current_joke_buffer + buffer_offset);
+
+        if (is_gabbro) {
+            s_current_joke_buffer[0] = '\n';
         }
-
-        strncpy(s_current_joke_buffer, deliver_t->value->cstring, max_len);
-        s_current_joke_buffer[max_len] = '\0';
-
-        char *read_ptr = s_current_joke_buffer;
-        char *write_ptr = s_current_joke_buffer;
-        while (*read_ptr) {
-            if (*read_ptr == '\\' && *(read_ptr + 1) == 'n') {
-                *write_ptr++ = '\n';
-                read_ptr += 2;
-            } else {
-                *write_ptr++ = *read_ptr++;
-            }
-        }
-
-        if (PBL_IF_ROUND_ELSE(true, false)) {
-            *write_ptr++ = '\n';
-            *write_ptr++ = '\n';
-        }
-        *write_ptr = '\0';
 
         display_joke(s_current_joke_buffer);
         return;
@@ -912,9 +957,7 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
 static void main_window_load(Window *window) {
     GRect full_bounds = layer_get_bounds(window_get_root_layer(window));
 
-    int16_t text_width = PBL_IF_ROUND_ELSE(full_bounds.size.w, full_bounds.size.w - 20);
-    GRect scroll_bounds = GRect(0, 0, text_width, full_bounds.size.h);
-    s_scroll_layer = scroll_layer_create(scroll_bounds);
+    s_scroll_layer = scroll_layer_create(full_bounds);
     scroll_layer_set_click_config_onto_window(s_scroll_layer, window);
 
     ScrollLayerCallbacks callbacks = {
@@ -922,18 +965,11 @@ static void main_window_load(Window *window) {
     };
     scroll_layer_set_callbacks(s_scroll_layer, callbacks);
 
-    int16_t top_margin = PBL_IF_ROUND_ELSE(18, 0);
-    s_joke_text_layer = text_layer_create(GRect(0, top_margin, scroll_bounds.size.w, scroll_bounds.size.h));
+    s_joke_layer = layer_create(full_bounds);
+    layer_set_update_proc(s_joke_layer, joke_layer_update_proc);
 
-    text_layer_set_text_alignment(s_joke_text_layer, PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft));
-    text_layer_set_overflow_mode(s_joke_text_layer, GTextOverflowModeWordWrap);
-
-    scroll_layer_add_child(s_scroll_layer, text_layer_get_layer(s_joke_text_layer));
+    scroll_layer_add_child(s_scroll_layer, s_joke_layer);
     layer_add_child(window_get_root_layer(window), scroll_layer_get_layer(s_scroll_layer));
-
-    if (PBL_IF_ROUND_ELSE(true, false)) {
-        text_layer_enable_screen_text_flow_and_paging(s_joke_text_layer, 12);
-    }
 
     s_prompt_text_layer = text_layer_create(GRect(full_bounds.size.w - PBL_IF_ROUND_ELSE(35, 30), (full_bounds.size.h / 2) - 10, PBL_IF_ROUND_ELSE(30, 28), 20));
     text_layer_set_text(s_prompt_text_layer, "next");
@@ -943,13 +979,13 @@ static void main_window_load(Window *window) {
 
     s_up_arrow_layer = layer_create(PBL_IF_ROUND_ELSE(
         GRect(0, 0, full_bounds.size.w, 15),
-                                                      GRect(full_bounds.size.w - 20, 0, 20, 20)
+        GRect(full_bounds.size.w - 20, 0, 20, 20)
     ));
     layer_add_child(window_get_root_layer(window), s_up_arrow_layer);
 
     s_down_arrow_layer = layer_create(PBL_IF_ROUND_ELSE(
         GRect(0, full_bounds.size.h - 15, full_bounds.size.w, 15),
-                                                        GRect(full_bounds.size.w - 20, full_bounds.size.h - 20, 20, 20)
+        GRect(full_bounds.size.w - 20, full_bounds.size.h - 20, 20, 20)
     ));
     layer_add_child(window_get_root_layer(window), s_down_arrow_layer);
 
@@ -985,11 +1021,7 @@ static void main_window_unload(Window *window) {
         app_timer_cancel(s_deferred_joke_timer);
         s_deferred_joke_timer = NULL;
     }
-    if (s_layout_timer) {
-        app_timer_cancel(s_layout_timer);
-        s_layout_timer = NULL;
-    }
-    text_layer_destroy(s_joke_text_layer);
+    layer_destroy(s_joke_layer);
     text_layer_destroy(s_prompt_text_layer);
     layer_destroy(s_up_arrow_layer);
     layer_destroy(s_down_arrow_layer);

@@ -1,6 +1,6 @@
 # Dad Jokes for PebbleOS
 
-A charming, highly configurable Pebble smartwatch app that delivers a healthy dose of groans right to your wrist. Version 1.3.0 brings advanced scheduling, offline reliability, and deep customization to both modern Pebble hardware and classic devices.
+A charming, highly configurable Pebble smartwatch app that delivers a healthy dose of groans right to your wrist. Version 1.3.2 brings advanced scheduling, offline reliability, and deep customization to both modern Pebble hardware and classic devices.
 
 ## Features
 

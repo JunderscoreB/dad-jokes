@@ -18,7 +18,15 @@
 <body>
   <div class="container">
     <h2>Dad Jokes Settings</h2>
-    
+
+    <div class="setting">
+      <label for="EnableTimeline">Push 'Joke of the Day' to Timeline</label>
+      <select id="EnableTimeline">
+        <option value="1" selected>Enabled</option>
+        <option value="0">Disabled</option>
+      </select>
+    </div>
+
     <div class="setting">
       <label for="ScheduleMode">Delivery Mode</label>
       <select id="ScheduleMode" onchange="toggleSettings()">
@@ -177,7 +185,7 @@
         <option value="1">On (Dark Theme)</option>
       </select>
     </div>
-    
+
     <div class="setting">
       <label for="FontSize">Font Size</label>
       <select id="FontSize">
@@ -243,8 +251,8 @@
         try {
           var config = JSON.parse(configStr);
           var fields = [
-            'ScheduleMode', 'SpecificHour', 'SpecificMinute', 'WindowStartHour', 
-            'WindowEndHour', 'JokesPerHour', 'TimeoutSec', 'CustomJokeMode', 
+            'EnableTimeline', 'ScheduleMode', 'SpecificHour', 'SpecificMinute', 'WindowStartHour',
+            'WindowEndHour', 'JokesPerHour', 'TimeoutSec', 'CustomJokeMode',
             'AlertStyle', 'SoundTune', 'AlertVolume', 'FontSize', 'DarkMode', 'FlickToDismiss'
           ];
           for (var i = 0; i < fields.length; i++) {
@@ -268,6 +276,7 @@
 
     document.getElementById('save_button').addEventListener('click', function() {
       var options = {
+        'EnableTimeline': parseInt(document.getElementById('EnableTimeline').value),
         'ScheduleMode': parseInt(document.getElementById('ScheduleMode').value),
         'SpecificHour': parseInt(document.getElementById('SpecificHour').value),
         'SpecificMinute': parseInt(document.getElementById('SpecificMinute').value),
@@ -289,7 +298,7 @@
       if (!return_to) {
         return_to = 'pebblejs://close#';
       }
-      
+
       document.location = return_to + encodeURIComponent(JSON.stringify(options));
     });
   </script>

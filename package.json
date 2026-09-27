@@ -1,7 +1,7 @@
 {
   "name": "Dad Jokes",
   "author": "J_B",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "keywords": [
     "pebble-app"
   ],
@@ -26,32 +26,39 @@
     "watchapp": {
       "watchface": false
     },
-    "messageKeys": [
-      "ScheduleMode",
-      "SpecificHour",
-      "SpecificMinute",
-      "WindowStartHour",
-      "WindowEndHour",
-      "JokesPerHour",
-      "TimeoutSec",
-      "AlertStyle",
-      "AlertVolume",
-      "SoundTune",
-      "FontSize",
-      "CustomJokeMode",
-      "CustomJokesText",
-      "CustomJokeCount",
-      "RequestJokeIdx",
-      "DeliverJokeText",
-      "DarkMode",
-      "FlickToDismiss"
-    ],
+    "messageKeys": {
+      "RequestJokeIdx": 10000,
+      "DeliverJokeText": 10001,
+      "EnableTimeline": 10002,
+      "ScheduleMode": 10003,
+      "SpecificHour": 10004,
+      "SpecificMinute": 10005,
+      "WindowStartHour": 10006,
+      "WindowEndHour": 10007,
+      "JokesPerHour": 10008,
+      "CustomJokeMode": 10009,
+      "TimeoutSec": 10010,
+      "AlertStyle": 10011,
+      "SoundTune": 10012,
+      "AlertVolume": 10013,
+      "FontSize": 10014,
+      "DarkMode": 10015,
+      "FlickToDismiss": 10016,
+      "TotalJokeCount": 10017,
+      "OverrideVolume": 10018
+    },
     "resources": {
       "media": [
         {
-          "type": "raw",
-          "name": "JOKES_TXT",
-          "file": "jokes.txt"
+          "type": "png",
+          "name": "IMAGE_MENU_ICON",
+          "file": "logo_25.png",
+          "menuIcon": true
+        },
+        {
+          "type": "png",
+          "name": "IMAGE_LOGO_LARGE",
+          "file": "logo_80.png"
         }
       ]
     }

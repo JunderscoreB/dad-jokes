@@ -89,18 +89,18 @@
       <div class="setting">
         <label for="WindowEndHour">Window End Hour</label>
         <select id="WindowEndHour">
-          <option value="0">00:00 (Midnight)</option><option value="1">01:00</option>
-          <option value="2">02:00</option><option value="3">03:00</option>
-          <option value="4">04:00</option><option value="5">05:00</option>
-          <option value="6">06:00</option><option value="7">07:00</option>
-          <option value="8">08:00</option><option value="9">09:00</option>
-          <option value="10">10:00</option><option value="11">11:00</option>
-          <option value="12">12:00 (Noon)</option><option value="13">13:00</option>
-          <option value="14">14:00</option><option value="15">15:00</option>
-          <option value="16">16:00</option><option value="17">17:00</option>
-          <option value="18">18:00</option><option value="19">19:00</option>
-          <option value="20">20:00</option><option value="21">21:00</option>
-          <option value="22">22:00</option><option value="23">23:00</option>
+          <option value="0">00:59</option><option value="1">01:59</option>
+          <option value="2">02:59</option><option value="3">03:59</option>
+          <option value="4">04:59</option><option value="5">05:59</option>
+          <option value="6">06:59</option><option value="7">07:59</option>
+          <option value="8">08:59</option><option value="9">09:59</option>
+          <option value="10">10:59</option><option value="11">11:59</option>
+          <option value="12">12:59</option><option value="13">13:59</option>
+          <option value="14">14:59</option><option value="15">15:59</option>
+          <option value="16">16:59</option><option value="17">17:59</option>
+          <option value="18">18:59</option><option value="19">19:59</option>
+          <option value="20">20:59</option><option value="21">21:59</option>
+          <option value="22">22:59</option><option value="23">23:59</option>
         </select>
       </div>
       <div class="setting">
@@ -144,6 +144,7 @@
         <option value="0">Disabled (Stay Open)</option>
         <option value="15">15 Seconds</option>
         <option value="30" selected>30 Seconds</option>
+        <option value="45">45 Seconds</option>
         <option value="60">60 Seconds</option>
         <option value="120">120 Seconds</option>
       </select>
@@ -165,14 +166,26 @@
       <div class="setting">
         <label for="SoundTune">Punchline Sound</label>
         <select id="SoundTune">
-          <option value="0">Classic Digital Beep</option>
-          <option value="1">Ba-Dum-Tss</option>
-          <option value="2">Fart</option>
-          <option value="3">Circus March</option>
+          <option value="0">Silence (No Tune)</option>
+          <option value="1" selected>Classic Digital Beep</option>
+          <option value="2">Ba-Dum-Tss</option>
+          <option value="3">Fart</option>
+          <option value="4">Circus March</option>
+          <option value="5">Super Mario Theme</option>
+          <option value="6">Mexican Hat Dance</option>
+          <option value="7">Zelda Theme</option>
+          <option value="8">Random</option>
         </select>
       </div>
       <div class="setting">
-        <label for="AlertVolume">Speaker Volume (%)</label>
+        <label for="OverrideVolume">Override System Volume</label>
+        <select id="OverrideVolume" onchange="toggleAudioSettings()">
+          <option value="1">Enabled</option>
+          <option value="0" selected>Disabled</option>
+        </select>
+      </div>
+      <div class="setting" id="VolumeSliderGroup" style="display: none;">
+        <label for="AlertVolume">App Volume (%)</label>
         <input type="range" id="AlertVolume" min="0" max="100" value="100">
       </div>
     </div>
@@ -215,6 +228,8 @@
       var platform = getQueryParam('platform');
       var style = document.getElementById('AlertStyle').value;
       var audioGroup = document.getElementById('AudioGroup');
+      var overrideVol = document.getElementById('OverrideVolume').value;
+      var volSliderGroup = document.getElementById('VolumeSliderGroup');
 
       if (platform && platform !== 'emery') {
         audioGroup.style.display = 'none';
@@ -223,6 +238,11 @@
 
       if (style === '1' || style === '2') {
         audioGroup.style.display = 'block';
+        if (overrideVol === '1') {
+          volSliderGroup.style.display = 'block';
+        } else {
+          volSliderGroup.style.display = 'none';
+        }
       } else {
         audioGroup.style.display = 'none';
       }
@@ -253,7 +273,7 @@
           var fields = [
             'EnableTimeline', 'ScheduleMode', 'SpecificHour', 'SpecificMinute', 'WindowStartHour',
             'WindowEndHour', 'JokesPerHour', 'TimeoutSec', 'CustomJokeMode',
-            'AlertStyle', 'SoundTune', 'AlertVolume', 'FontSize', 'DarkMode', 'FlickToDismiss'
+            'AlertStyle', 'SoundTune', 'OverrideVolume', 'AlertVolume', 'FontSize', 'DarkMode', 'FlickToDismiss'
           ];
           for (var i = 0; i < fields.length; i++) {
             var f = fields[i];
@@ -285,6 +305,7 @@
         'JokesPerHour': parseInt(document.getElementById('JokesPerHour').value),
         'AlertStyle': parseInt(document.getElementById('AlertStyle').value),
         'SoundTune': parseInt(document.getElementById('SoundTune').value),
+        'OverrideVolume': parseInt(document.getElementById('OverrideVolume').value),
         'AlertVolume': parseInt(document.getElementById('AlertVolume').value),
         'FontSize': parseInt(document.getElementById('FontSize').value),
         'CustomJokeMode': parseInt(document.getElementById('CustomJokeMode').value),

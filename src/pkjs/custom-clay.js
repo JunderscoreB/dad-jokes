@@ -2,7 +2,9 @@ module.exports = function(minified) {
   var clayConfig = this;
 
   function toggleScheduleSettings() {
-    var mode = clayConfig.getItemByMessageKey('ScheduleMode').get();
+    // Determine visibility based strictly on the Schedule Mode, ignoring the Timeline toggle
+    var modeItem = clayConfig.getItemByMessageKey('ScheduleMode');
+    var mode = modeItem ? modeItem.get() : "0";
     var specHour = clayConfig.getItemByMessageKey('SpecificHour');
     var specMinute = clayConfig.getItemByMessageKey('SpecificMinute');
     var winStart = clayConfig.getItemByMessageKey('WindowStartHour');
@@ -10,27 +12,27 @@ module.exports = function(minified) {
     var jokesPerHour = clayConfig.getItemByMessageKey('JokesPerHour');
 
     if (mode === "0") {
-      specHour.show();
-      specMinute.show();
-      winStart.hide();
-      winEnd.hide();
-      jokesPerHour.hide();
+      if (specHour) specHour.show();
+      if (specMinute) specMinute.show();
+      if (winStart) winStart.hide();
+      if (winEnd) winEnd.hide();
+      if (jokesPerHour) jokesPerHour.hide();
     } else {
-      specHour.hide();
-      specMinute.hide();
-      winStart.show();
-      winEnd.show();
-      jokesPerHour.show();
+      if (specHour) specHour.hide();
+      if (specMinute) specMinute.hide();
+      if (winStart) winStart.show();
+      if (winEnd) winEnd.show();
+      if (jokesPerHour) jokesPerHour.show();
     }
   }
 
   function setupAlertOptions() {
     var platform = clayConfig.meta.activeWatchInfo ? clayConfig.meta.activeWatchInfo.platform : 'aplite';
     var alertStyleItem = clayConfig.getItemByMessageKey('AlertStyle');
-    
-    var selectEl = alertStyleItem.$element && alertStyleItem.$element[0] 
-      ? alertStyleItem.$element[0].querySelector('select') 
-      : document.querySelector('select[name="AlertStyle"]');
+
+    var selectEl = alertStyleItem.$element && alertStyleItem.$element[0]
+    ? alertStyleItem.$element[0].querySelector('select')
+    : document.querySelector('select[name="AlertStyle"]');
 
     if (selectEl && platform !== 'emery') {
       var soundOnlyOpt = selectEl.querySelector('option[value="1"]');
@@ -52,21 +54,36 @@ module.exports = function(minified) {
     var platform = clayConfig.meta.activeWatchInfo ? clayConfig.meta.activeWatchInfo.platform : 'aplite';
     var alertStyleItem = clayConfig.getItemByMessageKey('AlertStyle');
     var soundTune = clayConfig.getItemByMessageKey('SoundTune');
+    var overrideVolume = clayConfig.getItemByMessageKey('OverrideVolume');
     var alertVolume = clayConfig.getItemByMessageKey('AlertVolume');
 
     if (platform !== 'emery') {
-      soundTune.hide();
-      alertVolume.hide();
-      return; 
+      if (soundTune) soundTune.hide();
+      if (overrideVolume) overrideVolume.hide();
+      if (alertVolume) alertVolume.hide();
+      return;
     }
 
     var alertStyle = alertStyleItem.get();
+    
+    // Check if the current alert style permits sound
     if (alertStyle === "1" || alertStyle === "2") {
-      soundTune.show();
-      alertVolume.show();
+      if (soundTune) soundTune.show();
+      if (overrideVolume) overrideVolume.show();
+      
+      // Only show the volume slider if the override toggle is enabled
+      var isOverrideEnabled = overrideVolume && (overrideVolume.get() === true || overrideVolume.get() === "1" || overrideVolume.get() === 1);
+      
+      if (isOverrideEnabled) {
+        if (alertVolume) alertVolume.show();
+      } else {
+        if (alertVolume) alertVolume.hide();
+      }
+      
     } else {
-      soundTune.hide();
-      alertVolume.hide();
+      if (soundTune) soundTune.hide();
+      if (overrideVolume) overrideVolume.hide();
+      if (alertVolume) alertVolume.hide();
     }
   }
 
@@ -76,7 +93,6 @@ module.exports = function(minified) {
 
     var inputEl = customJokesInput.$element[0].querySelector('input');
     if (inputEl && inputEl.tagName.toLowerCase() === 'input') {
-      
       var textarea = document.createElement('textarea');
       textarea.rows = 8;
       textarea.className = inputEl.className;
@@ -85,23 +101,19 @@ module.exports = function(minified) {
       textarea.style.resize = 'vertical';
       textarea.style.fontFamily = 'monospace';
 
-      // Unpack safe pipes (|) back into physical newlines (\n) on load
       textarea.value = (customJokesInput.get() || "").split('|').join('\n');
 
-      // Use Capture Phase (true) to intercept the Enter key BEFORE Clay sees it
       textarea.addEventListener('keydown', function(e) {
         if (e.keyCode === 13 || e.key === 'Enter') {
           e.stopPropagation();
         }
       }, true);
 
-      // Pack newlines back into safe pipes as the user types
       textarea.addEventListener('input', function() {
         var safeString = textarea.value.split('\n').join('|');
         customJokesInput.set(safeString);
       });
 
-      // If Clay clears the input programmatically, sync it to the textarea
       customJokesInput.on('change', function() {
         var expected = textarea.value.split('\n').join('|');
         if (customJokesInput.get() !== expected) {
@@ -109,7 +121,6 @@ module.exports = function(minified) {
         }
       });
 
-      // Hide the single-line input and inject our textarea
       inputEl.style.display = 'none';
       inputEl.parentNode.insertBefore(textarea, inputEl);
       customJokesInput._injectedTextArea = textarea;
@@ -118,13 +129,24 @@ module.exports = function(minified) {
 
   clayConfig.on(clayConfig.EVENTS.AFTER_BUILD, function() {
     var modeDropdown = clayConfig.getItemByMessageKey('ScheduleMode');
-    modeDropdown.on('change', toggleScheduleSettings);
-    toggleScheduleSettings(); 
+    if (modeDropdown) {
+      modeDropdown.on('change', toggleScheduleSettings);
+    }
+    toggleScheduleSettings();
 
     var alertStyleDropdown = clayConfig.getItemByMessageKey('AlertStyle');
-    alertStyleDropdown.on('change', toggleAudioSettings);
+    if (alertStyleDropdown) {
+      alertStyleDropdown.on('change', toggleAudioSettings);
+    }
+    
+    // Bind the change event for the Override System Volume toggle
+    var overrideVolumeToggle = clayConfig.getItemByMessageKey('OverrideVolume');
+    if (overrideVolumeToggle) {
+      overrideVolumeToggle.on('change', toggleAudioSettings);
+    }
+    
     setupAlertOptions();
-    toggleAudioSettings(); 
+    toggleAudioSettings();
 
     injectTextArea();
 

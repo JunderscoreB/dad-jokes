@@ -4,9 +4,46 @@
 # Feel free to customize this to your needs.
 #
 import os.path
+import os
+import re
 
 top = '.'
 out = 'build'
+
+def generate_jokes_assets():
+    """
+    Parses the JavaScript joke array and generates the C header and raw text
+    resource for the watchapp to use, keeping both environments synchronized.
+    """
+    js_path = 'src/pkjs/jokes.js' if os.path.exists('src/pkjs/jokes.js') else 'jokes.js'
+
+    if not os.path.exists(js_path):
+        return
+
+    with open(js_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    # Extract strings from the JS array
+    match = re.search(r'module\.exports\s*=\s*\[(.*?)\];', content, re.DOTALL)
+    if not match:
+        return
+
+    jokes = re.findall(r'"(.*?)"(?=\s*,|\s*$)', match.group(1).strip(), re.DOTALL)
+
+    # Ensure output directories exist
+    os.makedirs('resources', exist_ok=True)
+    os.makedirs('src/c', exist_ok=True)
+
+    # Generate the raw text asset for the watch
+    with open('resources/jokes.txt', 'w', encoding='utf-8') as f:
+        for j in jokes:
+            f.write(j.replace('\\"', '"').replace('\\n', '\n') + '\n')
+
+    # Generate the header file for the C code
+    with open('src/c/jokes.h', 'w', encoding='utf-8') as f:
+        f.write("/* Auto-generated during pebble build - DO NOT EDIT */\n")
+        f.write("#pragma once\n\n")
+        f.write(f"#define NUM_BUILT_IN_JOKES {len(jokes)}\n")
 
 
 def options(ctx):
@@ -24,6 +61,9 @@ def configure(ctx):
 
 
 def build(ctx):
+    # Auto-generate our C assets from JS before the compiler runs
+    generate_jokes_assets()
+
     ctx.load('pebble_sdk')
 
     build_worker = os.path.exists('worker_src')

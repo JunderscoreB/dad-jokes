@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-#include <pebble.h> //[cite: 7]
+#include <pebble.h>
+#include "jokes.h"
 
 #define PERSIST_KEY_SEED           1
 #define PERSIST_KEY_INDEX          2
@@ -55,7 +56,6 @@ typedef struct {
     bool is_accented;
 } PolyNote;
 
-// Super Mario Bros Overworld Theme (Intro - Polyphonic)
 static const PolyNote s_mario_theme[] = {
     {E5, FS4, QUARTER, true}, {E5, FS4, QUARTER, true}, {REST, REST, QUARTER, false}, {E5, FS4, QUARTER, true},
     {REST, REST, QUARTER, false}, {C5, FS4, QUARTER, true}, {E5, FS4, HALF, true},
@@ -63,7 +63,6 @@ static const PolyNote s_mario_theme[] = {
     {G4, G3, HALF, true}, {REST, REST, HALF, false}
 };
 
-// El Jarabe Tapatio / Mexican Hat Dance (B Section - Polyphonic)
 static const PolyNote s_hat_dance_theme[] = {
     {G5, E5, FAST_BEAT, false}, {FS5, DS5, FAST_BEAT, false}, {G5, E5, FAST_BEAT, true},
     {E5, C5, FAST_BEAT, false}, {DS5, B4, FAST_BEAT, false},  {D5, C5, FAST_BEAT, true},
@@ -71,41 +70,24 @@ static const PolyNote s_hat_dance_theme[] = {
     {G4, E4, FAST_BEAT_X2, true}
 };
 
-// Entrance of the Gladiators / Circus Theme (Polyphonic - Quarter Note Ending)
 static const PolyNote s_circus_theme[] = {
-    {C6, C5, BEAT_250, true},
-    {B5, G4, BEAT_250, true},
-    {AS5, C5, BEAT_125, false},
-    {B5, G4, BEAT_125, false},
-    {AS5, C5, BEAT_125, false},
-    {A5, F5, BEAT_125, false},
-    {GS5, C5, BEAT_250, true},
-    {G5, G4, BEAT_250, true},
-    {FS5, C5, BEAT_250, true},
+    {C6, C5, BEAT_250, true}, {B5, G4, BEAT_250, true}, {AS5, C5, BEAT_125, false},
+    {B5, G4, BEAT_125, false}, {AS5, C5, BEAT_125, false}, {A5, F5, BEAT_125, false},
+    {GS5, C5, BEAT_250, true}, {G5, G4, BEAT_250, true}, {FS5, C5, BEAT_250, true},
     {G5, G4, BEAT_250, true}
 };
 
-// Fart Sound Effect (Polyphonic - Long & Percussive/Sputtering)
 static const PolyNote s_fart_theme[] = {
-    {60, 55, 60, true},
-    {45, 40, 80, true},
-    {REST, REST, 15, false},
-    {35, 30, 120, true},
-    {REST, REST, 20, false},
-    {25, 20, 200, true},
+    {60, 55, 60, true}, {45, 40, 80, true}, {REST, REST, 15, false},
+    {35, 30, 120, true}, {REST, REST, 20, false}, {25, 20, 200, true},
     {15, 12, 400, false}
 };
 
-// The Legend of Zelda: A Link to the Past - Overworld Theme
 static const PolyNote s_zelda_theme[] = {
-    {G4, G3, ZELDA_BEAT_250, true},
-    {D4, D3, ZELDA_HALF, false},
-    {G4, G3, ZELDA_FAST_BEAT, true},
-    {G4, REST, ZELDA_EIGHTH, false},
-    {A4, REST, ZELDA_EIGHTH, false},
-    {B4, REST, ZELDA_EIGHTH, false},
-    {C5, REST, ZELDA_EIGHTH, false},
-    {D5, G3, ZELDA_HALF, true}
+    {G4, G3, ZELDA_BEAT_250, true}, {D4, D3, ZELDA_HALF, false},
+    {G4, G3, ZELDA_FAST_BEAT, true}, {G4, REST, ZELDA_EIGHTH, false},
+    {A4, REST, ZELDA_EIGHTH, false}, {B4, REST, ZELDA_EIGHTH, false},
+    {C5, REST, ZELDA_EIGHTH, false}, {D5, G3, ZELDA_HALF, true}
 };
 
 static Window *s_main_window;
@@ -142,6 +124,7 @@ typedef struct {
     int32_t dark_mode;
     int32_t flick_to_dismiss;
     int32_t enable_timeline;
+    int32_t custom_joke_mode; // Maintained backward compatibility
 } AppConfig;
 
 static AppConfig s_config = {
@@ -160,7 +143,8 @@ static AppConfig s_config = {
     .total_joke_count = 0,
     .dark_mode = 0,
     .flick_to_dismiss = 1,
-    .enable_timeline = 1
+    .enable_timeline = 1,
+    .custom_joke_mode = 0
 };
 
 // Forward declarations
@@ -250,7 +234,7 @@ static void write_tone_to_speaker(uint16_t freq_hz, uint16_t duration_ms) {
 
     while (samples_written < total_samples) {
         uint32_t chunk_samples = total_samples - samples_written;
-        if (chunk_samples > ARRAY_LENGTH(buffer)) chunk_samples = ARRAY_LENGTH(buffer); //[cite: 7]
+        if (chunk_samples > ARRAY_LENGTH(buffer)) chunk_samples = ARRAY_LENGTH(buffer);
 
         for (uint32_t i = 0; i < chunk_samples; i++) {
             buffer[i] = (((samples_written + i) / half_period_samples) % 2 == 0) ? 8000 : -8000;
@@ -277,7 +261,7 @@ static void write_mixed_cymbal_to_speaker(uint16_t freq_hz, uint16_t duration_ms
 
     while (samples_written < total_samples) {
         uint32_t chunk_samples = total_samples - samples_written;
-        if (chunk_samples > ARRAY_LENGTH(buffer)) chunk_samples = ARRAY_LENGTH(buffer); //[cite: 7]
+        if (chunk_samples > ARRAY_LENGTH(buffer)) chunk_samples = ARRAY_LENGTH(buffer);
 
         for (uint32_t i = 0; i < chunk_samples; i++) {
             int16_t tone = (((samples_written + i) / half_period_samples) % 2 == 0) ? 5000 : -5000;
@@ -303,7 +287,7 @@ static void write_silence_to_speaker(uint16_t duration_ms) {
 
     while (samples_written < total_samples) {
         uint32_t chunk_samples = total_samples - samples_written;
-        if (chunk_samples > ARRAY_LENGTH(buffer)) chunk_samples = ARRAY_LENGTH(buffer); //[cite: 7]
+        if (chunk_samples > ARRAY_LENGTH(buffer)) chunk_samples = ARRAY_LENGTH(buffer);
 
         uint32_t bytes_to_write = chunk_samples * sizeof(int16_t);
         uint32_t written_bytes = speaker_stream_write((const void*)buffer, bytes_to_write);
@@ -341,8 +325,8 @@ static void write_polyphonic_chiptune_tone(uint16_t freq_melody, uint16_t freq_h
 
     while (samples_written < total_samples) {
         uint32_t chunk_samples = total_samples - samples_written;
-        if (chunk_samples > ARRAY_LENGTH(buffer)) { //[cite: 7]
-            chunk_samples = ARRAY_LENGTH(buffer); //[cite: 7]
+        if (chunk_samples > ARRAY_LENGTH(buffer)) {
+            chunk_samples = ARRAY_LENGTH(buffer);
         }
 
         for (uint32_t i = 0; i < chunk_samples; i++) {
@@ -491,7 +475,7 @@ static void play_alert(void) {
 
     if (do_vibe) {
         uint32_t segments[] = { 200, 100, 200 };
-        VibePattern pat = { .durations = segments, .num_segments = ARRAY_LENGTH(segments) }; //[cite: 7]
+        VibePattern pat = { .durations = segments, .num_segments = ARRAY_LENGTH(segments) };
         vibes_enqueue_custom_pattern(pat);
     }
 
@@ -500,7 +484,6 @@ static void play_alert(void) {
         if (model == WATCH_INFO_MODEL_COREDEVICES_PT2 || model == WATCH_INFO_MODEL_PEBBLE_TIME_2) {
             if (speaker_is_muted()) return;
 
-            // Route standard system volume or custom override
             uint8_t current_volume = s_config.override_volume ? s_config.alert_volume : 100;
             if (current_volume > 100) current_volume = 100;
 
@@ -509,11 +492,8 @@ static void play_alert(void) {
 
                 int32_t active_tune = s_config.sound_tune;
 
-                // If set to random (8), exclusively pick tunes 1 through 7
                 if (active_tune == 8) {
                     time_t now = time(NULL);
-
-                    // Break the PRNG lock caused by shuffle_jokes()
                     srand(now);
 
                     time_t tune_history[9][2] = {{0}};
@@ -525,8 +505,6 @@ static void play_alert(void) {
                     int attempts = 0;
 
                     while (attempts < 7) {
-                        // Slot [1] holds the older timestamp.
-                        // If it's 0 (hasn't been played twice) or > 1 hour, it's valid.
                         if (tune_history[next_tune][1] == 0 || (now - tune_history[next_tune][1]) >= 3600) {
                             break;
                         }
@@ -534,7 +512,6 @@ static void play_alert(void) {
                         attempts++;
                     }
 
-                    // Shift the history back and record the new playtime persistently
                     tune_history[next_tune][1] = tune_history[next_tune][0];
                     tune_history[next_tune][0] = now;
                     persist_write_data(PERSIST_KEY_TUNE_HISTORY, tune_history, sizeof(tune_history));
@@ -543,35 +520,35 @@ static void play_alert(void) {
                 }
 
                 if (active_tune == 7) {
-                    for (uint32_t i = 0; i < ARRAY_LENGTH(s_zelda_theme); i++) { //[cite: 7]
+                    for (uint32_t i = 0; i < ARRAY_LENGTH(s_zelda_theme); i++) {
                         write_polyphonic_chiptune_tone(s_zelda_theme[i].freq_melody,
                                                        s_zelda_theme[i].freq_harmony,
                                                        s_zelda_theme[i].duration_ms,
                                                        s_zelda_theme[i].is_accented);
                     }
                 } else if (active_tune == 6) {
-                    for (uint32_t i = 0; i < ARRAY_LENGTH(s_hat_dance_theme); i++) { //[cite: 7]
+                    for (uint32_t i = 0; i < ARRAY_LENGTH(s_hat_dance_theme); i++) {
                         write_polyphonic_chiptune_tone(s_hat_dance_theme[i].freq_melody,
                                                        s_hat_dance_theme[i].freq_harmony,
                                                        s_hat_dance_theme[i].duration_ms,
                                                        s_hat_dance_theme[i].is_accented);
                     }
                 } else if (active_tune == 5) {
-                    for (uint32_t i = 0; i < ARRAY_LENGTH(s_mario_theme); i++) { //[cite: 7]
+                    for (uint32_t i = 0; i < ARRAY_LENGTH(s_mario_theme); i++) {
                         write_polyphonic_chiptune_tone(s_mario_theme[i].freq_melody,
                                                        s_mario_theme[i].freq_harmony,
                                                        s_mario_theme[i].duration_ms,
                                                        s_mario_theme[i].is_accented);
                     }
                 } else if (active_tune == 4) {
-                    for (uint32_t i = 0; i < ARRAY_LENGTH(s_circus_theme); i++) { //[cite: 7]
+                    for (uint32_t i = 0; i < ARRAY_LENGTH(s_circus_theme); i++) {
                         write_polyphonic_chiptune_tone(s_circus_theme[i].freq_melody,
                                                        s_circus_theme[i].freq_harmony,
                                                        s_circus_theme[i].duration_ms,
                                                        s_circus_theme[i].is_accented);
                     }
                 } else if (active_tune == 3) {
-                    for (uint32_t i = 0; i < ARRAY_LENGTH(s_fart_theme); i++) { //[cite: 7]
+                    for (uint32_t i = 0; i < ARRAY_LENGTH(s_fart_theme); i++) {
                         write_polyphonic_chiptune_tone(s_fart_theme[i].freq_melody,
                                                        s_fart_theme[i].freq_harmony,
                                                        s_fart_theme[i].duration_ms,
@@ -585,7 +562,6 @@ static void play_alert(void) {
                     write_tone_to_speaker(4096, 125); write_silence_to_speaker(125);
                     write_tone_to_speaker(4096, 125);
                 }
-                // active_tune == 0 bypasses playback logic completely for Silence.
 
                 write_silence_to_speaker(400);
                 speaker_stop();
@@ -660,6 +636,44 @@ static void display_joke(const char *joke_text) {
     layer_mark_dirty(s_joke_layer);
 }
 
+// Extract a specific joke directly from the .txt resource in flash memory
+static void load_builtin_joke(uint16_t joke_id) {
+    ResHandle handle = resource_get_handle(RESOURCE_ID_BUILT_IN_JOKES);
+    size_t res_size = resource_size(handle);
+
+    uint16_t current_joke = 0;
+    uint32_t offset = 0;
+    char buffer[1024];
+    uint16_t buf_idx = 0;
+    uint8_t chunk[64];
+
+    // Read incrementally to minimize RAM usage
+    while (offset < res_size) {
+        size_t bytes_to_read = res_size - offset;
+        if (bytes_to_read > sizeof(chunk)) bytes_to_read = sizeof(chunk);
+        resource_load_byte_range(handle, offset, chunk, bytes_to_read);
+
+        for (size_t i = 0; i < bytes_to_read; i++) {
+            if (current_joke == joke_id) {
+                if (chunk[i] == '\n' || chunk[i] == '\0') {
+                    buffer[buf_idx] = '\0';
+                    display_joke(buffer);
+                    return;
+                }
+                if (buf_idx < sizeof(buffer) - 1) {
+                    buffer[buf_idx++] = chunk[i];
+                }
+            } else {
+                if (chunk[i] == '\n' || chunk[i] == '\0') {
+                    current_joke++;
+                }
+            }
+        }
+        offset += bytes_to_read;
+    }
+    display_joke("Joke not found.");
+}
+
 static void deferred_joke_request_cb(void *context) {
     s_deferred_joke_timer = NULL;
     load_current_joke();
@@ -667,19 +681,17 @@ static void deferred_joke_request_cb(void *context) {
 }
 
 static void load_current_joke(void) {
-    if (!s_is_phone_ready) {
-        display_joke("Connecting to phone...\n\nPlease wait.");
-        return;
-    }
-
-    if (!connection_service_peek_pebble_app_connection()) {
-        display_joke("Phone disconnected.\n\nPlease reconnect to load a joke.");
-        return;
-    }
-
     if (s_config.total_joke_count == 0) {
-        display_joke("No jokes found.\n\nPlease add some in the Pebble app settings.");
-        return;
+        if (!s_is_phone_ready && s_config.custom_joke_mode == 0) {
+            s_config.total_joke_count = NUM_BUILT_IN_JOKES;
+            shuffle_jokes();
+        } else if (!s_is_phone_ready) {
+            display_joke("Connecting to phone...\n\nPlease wait.");
+            return;
+        } else {
+            display_joke("No jokes found.\n\nPlease add some in the Pebble app settings.");
+            return;
+        }
     }
 
     if (s_current_index >= s_config.total_joke_count) {
@@ -687,6 +699,29 @@ static void load_current_joke(void) {
     }
 
     uint16_t joke_id = s_joke_order[s_current_index];
+
+    bool is_built_in = false;
+    if (s_config.custom_joke_mode == 0) {
+        is_built_in = true;
+    } else if (s_config.custom_joke_mode == 1 && joke_id < NUM_BUILT_IN_JOKES) {
+        is_built_in = true;
+    }
+
+    // Read directly from watch flash storage
+    if (is_built_in) {
+        if (joke_id < NUM_BUILT_IN_JOKES) {
+            load_builtin_joke(joke_id);
+        } else {
+            display_joke("Joke ID out of bounds.");
+        }
+        return;
+    }
+
+    // Phone is only queried for custom overrides
+    if (!connection_service_peek_pebble_app_connection()) {
+        display_joke("Phone disconnected.\n\nPlease reconnect to load a custom joke.");
+        return;
+    }
 
     DictionaryIterator *iter;
     AppMessageResult outbox_res = app_message_outbox_begin(&iter);
@@ -853,6 +888,9 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
 
     Tuple *mode_t = dict_find(iter, MESSAGE_KEY_ScheduleMode);
     if (mode_t) s_config.mode = get_int_from_tuple(mode_t);
+
+    Tuple *custom_mode_t = dict_find(iter, MESSAGE_KEY_CustomJokeMode);
+    if (custom_mode_t) s_config.custom_joke_mode = get_int_from_tuple(custom_mode_t);
 
     Tuple *spec_hr_t = dict_find(iter, MESSAGE_KEY_SpecificHour);
     if (spec_hr_t) s_config.spec_hour = get_int_from_tuple(spec_hr_t);
@@ -1022,12 +1060,17 @@ static void init(void) {
     srand(time(NULL));
 
     if (persist_exists(PERSIST_KEY_CONFIG)) {
-        if (persist_get_size(PERSIST_KEY_CONFIG) == sizeof(AppConfig)) {
-            persist_read_data(PERSIST_KEY_CONFIG, &s_config, sizeof(AppConfig));
+        size_t read_size = persist_get_size(PERSIST_KEY_CONFIG);
+        if (read_size <= sizeof(AppConfig)) {
+            persist_read_data(PERSIST_KEY_CONFIG, &s_config, read_size);
             if (s_config.timeout_sec > 0 && s_config.timeout_sec < 15) {
                 s_config.timeout_sec = 15;
             }
         }
+    }
+
+    if (s_config.total_joke_count == 0 && s_config.custom_joke_mode == 0) {
+        s_config.total_joke_count = NUM_BUILT_IN_JOKES;
     }
 
     if (s_config.total_joke_count > 0) {

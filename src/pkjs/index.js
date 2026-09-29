@@ -121,20 +121,7 @@ Pebble.addEventListener('ready', function(e) {
 Pebble.addEventListener('showConfiguration', function(e) {
   var overrideDict = { 'TimeoutSec': 0 };
   Pebble.sendAppMessage(overrideDict);
-
-  var isModernPebbleApp = (typeof Pebble.getActiveWatchInfo === 'function');
-  var watchInfo = isModernPebbleApp ? Pebble.getActiveWatchInfo() : null;
-  var platform = watchInfo ? watchInfo.platform : 'aplite';
-
-  var url;
-  if (isModernPebbleApp) {
-    url = clay.generateUrl();
-  } else {
-    var fallbackBaseUrl = 'https://your-github-username.github.io/dad-jokes-config/index.html';
-    var existingSettings = localStorage.getItem('clay-settings') || '{}';
-    url = fallbackBaseUrl + '?config=' + encodeURIComponent(existingSettings) + '&platform=' + platform;
-  }
-  Pebble.openURL(url);
+  Pebble.openURL(clay.generateUrl());
 });
 
 Pebble.addEventListener('webviewclosed', function(e) {

@@ -1,7 +1,7 @@
 {
   "name": "Dad Jokes",
   "author": "J_B",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "keywords": [
     "pebble-app"
   ],
@@ -49,6 +49,11 @@
     },
     "resources": {
       "media": [
+        {
+          "type": "raw",
+          "name": "BUILT_IN_JOKES",
+          "file": "jokes.txt"
+        },
         {
           "type": "png",
           "name": "IMAGE_MENU_ICON",

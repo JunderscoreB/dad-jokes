@@ -1,6 +1,7 @@
 # Pebble build artifacts
 build/
 .lock-waf*
+.waf-1.*
 *.pbw
 
 # Node dependencies
@@ -8,3 +9,8 @@ node_modules/
 
 # Other
 old/
+ignore/
+
+# Auto-generated resource files
+resources/jokes.txt
+src/c/jokes.h
